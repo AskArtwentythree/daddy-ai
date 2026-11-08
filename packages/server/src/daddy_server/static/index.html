@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Daddy AI · Family Ledger</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='16' fill='%231c1b18'/><text x='16' y='22.5' font-family='Georgia,serif' font-size='19' fill='%23f3efe6' text-anchor='middle'>D</text></svg>">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <main id="gate" class="gate" hidden>
+    <div class="gate-inner">
+      <span class="seal">D</span>
+      <h1>Daddy AI</h1>
+      <p class="kicker">The family ledger</p>
+      <p id="gate-message" class="gate-message">Open the dashboard from your terminal:</p>
+      <code class="gate-command">daddy dashboard</code>
+    </div>
+  </main>
+
+  <div id="app" class="page" hidden>
+    <header class="masthead">
+      <div class="brand">
+        <span class="seal">D</span>
+        <div>
+          <h1>Daddy AI</h1>
+          <p class="kicker">The family ledger · <span id="family-name"></span></p>
+        </div>
+      </div>
+      <div class="meta">
+        <span id="today"></span>
+        <span id="live" class="live" data-state="connecting">Connecting</span>
+        <span>Signed in as <b id="me"></b></span>
+      </div>
+    </header>
+
+    <section class="figures" aria-label="Last 24 hours">
+      <article class="figure">
+        <h2 class="kicker">Questions answered</h2>
+        <p class="number" id="n-questions">–</p>
+        <svg class="spark" id="s-questions" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>
+        <p class="caption">from project knowledge, last 24 h</p>
+      </article>
+      <article class="figure">
+        <h2 class="kicker">Deliveries</h2>
+        <p class="number" id="n-delivered">–</p>
+        <svg class="spark" id="s-delivered" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>
+        <p class="caption">files, skills and messages</p>
+      </article>
+      <article class="figure figure-stop">
+        <h2 class="kicker">Stopped</h2>
+        <p class="number" id="n-stopped">–</p>
+        <svg class="spark" id="s-stopped" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>
+        <p class="caption">secrets and out-of-bounds requests</p>
+      </article>
+      <article class="figure">
+        <h2 class="kicker">Agents at work</h2>
+        <p class="number" id="n-agents">–</p>
+        <p class="caption caption-tall">distinct agents that called Daddy in the last 24 h</p>
+      </article>
+    </section>
+
+    <div class="columns">
+      <section class="panel tree-panel">
+        <header class="panel-head">
+          <h2>The family tree</h2>
+          <p class="kicker">members · computers · agents</p>
+        </header>
+        <div id="tree" class="tree"></div>
+        <p class="legend">
+          <span><i class="dot dot-on"></i> online</span>
+          <span><i class="dot"></i> offline</span>
+          <span><i class="dot dot-off"></i> revoked</span>
+        </p>
+      </section>
+
+      <section class="panel ledger-panel">
+        <header class="panel-head">
+          <h2>Ledger</h2>
+          <nav class="filters" id="filters" aria-label="Filter the ledger">
+            <button data-filter="all" aria-pressed="true">All</button>
+            <button data-filter="stopped">Stopped</button>
+            <button data-filter="deliveries">Deliveries</button>
+            <button data-filter="knowledge">Knowledge</button>
+          </nav>
+        </header>
+        <ol id="ledger" class="ledger"></ol>
+        <p id="ledger-empty" class="empty" hidden>Nothing here yet. Ask your agent something.</p>
+      </section>
+    </div>
+
+    <div class="columns columns-lower">
+      <section class="panel">
+        <header class="panel-head">
+          <h2>Projects</h2>
+          <p class="kicker">what the family knows</p>
+        </header>
+        <table class="table">
+          <thead><tr><th>Project</th><th>Your role</th><th class="num">Members</th><th class="num">Files</th><th class="num">Passages</th></tr></thead>
+          <tbody id="projects"></tbody>
+        </table>
+      </section>
+
+      <section class="panel">
+        <header class="panel-head">
+          <h2>House rules</h2>
+          <p class="kicker">enforced on every call</p>
+        </header>
+        <dl class="rules" id="rules">
+          <dt>Identity</dt><dd>One revocable token per computer; every call names the agent that made it.</dd>
+          <dt>Access</dt><dd>Owner, member or viewer per project. Other projects' passages are never even scored.</dd>
+          <dt>Secrets</dt><dd>Scanned on the laptop before anything leaves, again at the gateway, and in Cursor prompts.</dd>
+          <dt>Answers</dt><dd>Only from project knowledge, with sources. Below the relevance bar: “Not in project knowledge.”</dd>
+          <dt>Models</dt><dd id="models">–</dd>
+        </dl>
+      </section>
+    </div>
+
+    <footer class="colophon">
+      Every request from every agent in the family passes through Daddy AI and is written to this ledger.
+    </footer>
+  </div>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

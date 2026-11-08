@@ -1,0 +1,22 @@
+[project]
+name = "daddy-cli"
+version = "0.1.0"
+description = "Daddy AI CLI: connects a computer's AI agents to the family gateway"
+requires-python = ">=3.12"
+dependencies = [
+    "daddy-common",
+    "typer>=0.12",
+    "httpx>=0.27",
+    "websockets>=13",
+    "mcp>=1.2",
+]
+
+[project.scripts]
+daddy = "daddy_cli.main:app"
+
+[tool.uv.sources]
+daddy-common = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

@@ -1,0 +1,24 @@
+[tool.uv.workspace]
+members = ["packages/common", "packages/server", "packages/cli"]
+
+[dependency-groups]
+dev = ["pytest>=8.3", "ruff>=0.8", "daddy-common", "daddy-server", "daddy-cli"]
+
+[tool.uv.sources]
+daddy-common = { workspace = true }
+daddy-server = { workspace = true }
+daddy-cli = { workspace = true }
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+ignore = ["B008"]  # FastAPI and Typer declare dependencies as default arguments
+
+[tool.ruff.lint.isort]
+known-first-party = ["daddy_common", "daddy_server", "daddy_cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["packages/common/tests", "packages/server/tests", "packages/cli/tests"]
