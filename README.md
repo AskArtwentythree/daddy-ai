@@ -75,8 +75,8 @@ uv run daddy invite bob@example.com --name Bob --project my-app   # prints Bob's
 Each teammate runs:
 
 ```bash
-uv tool install ./packages/cli       # installs the `daddy` command
-daddy join inv_… --server http://<gateway-host>:8787
+uv tool install "git+https://github.com/AskArtwentythree/daddy-ai#subdirectory=packages/cli"
+daddy join inv_… --server https://<gateway-host>   # the line from the invite
 daddy connect cursor                 # or: daddy connect claude
 daddy watch                          # optional: live notifications + automatic skill install
 ```
