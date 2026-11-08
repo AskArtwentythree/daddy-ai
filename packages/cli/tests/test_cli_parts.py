@@ -84,11 +84,16 @@ def test_connect_claude_desktop_keeps_other_servers(tmp_path, monkeypatch):
     path.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}, "theme": "dark"}))
 
     assert "claude-desktop" in connect.detect_agents()
-    connect.connect_claude_desktop()
+    assert connect.connected_agents() == []
+    assert connect.connect_claude_desktop()[1] is True
+    assert connect.connect_claude_desktop()[1] is False
 
     config = json.loads(path.read_text())
     assert config["theme"] == "dark"
     assert config["mcpServers"] == {"other": {"command": "x"}, "daddy": {"command": "/opt/daddy", "args": ["mcp"]}}
+    assert connect.connected_agents() == ["the Claude app"]
+    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy-other"))
+    assert connect.connected_agents() == []
 
 
 def test_connect_cursor_merges_existing_config(tmp_path, monkeypatch):

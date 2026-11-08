@@ -8,6 +8,7 @@ import json
 import os
 import platform
 import subprocess
+import sys
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -146,7 +147,19 @@ def join(
     config.token, config.user, config.family = result["token"], result["user"], result["family"]
     save_config(config)
     typer.secho(f"Welcome to the '{result['family']}' family, {result['user']}!", fg="green")
-    typer.echo("Next: `daddy connect all`, then ask your agent: “Daddy, who am I?”")
+    _next_steps()
+
+
+def _next_steps() -> None:
+    try:
+        ready = connectors.connected_agents()
+    except RuntimeError:
+        ready = []
+    if ready:
+        typer.echo(f"{' and '.join(ready)} already use Daddy on this computer, so no restart is needed.")
+        typer.echo("Just ask your agent: “Daddy, who am I?”")
+    else:
+        typer.echo("Next: `daddy connect all`, then ask your agent: “Daddy, who am I?”")
 
 
 @app.command()
@@ -627,17 +640,41 @@ def connect(
         agents = [agent]
     else:
         _fail("Supported agents: " + ", ".join(supported) + ", all")
+    notes = []
     for name in agents:
         if name == "cursor":
             for change in connectors.connect_cursor(project_dir, hooks):
                 typer.secho(f"✓ Cursor: {change}", fg="green")
+            notes.append("Cursor: ready now, no restart needed (it reloads Daddy by itself).")
         elif name == "claude":
             done, message = connectors.connect_claude()
             typer.secho(("✓ Claude Code: " if done else "") + message, fg="green" if done else "yellow")
+            if done:
+                notes.append("Claude Code: ready in every new session (`claude --continue` reopens your last chat).")
         else:
-            typer.secho(f"✓ Claude app: {connectors.connect_claude_desktop()}", fg="green")
-    restart = {"cursor": "Cursor", "claude": "Claude Code", "claude-desktop": "the Claude app (quit it fully)"}
-    typer.echo(f"Restart {', '.join(restart[a] for a in agents)}, then ask: “Daddy, who am I?”")
+            message, changed = connectors.connect_claude_desktop()
+            typer.secho(f"✓ Claude app: {message}", fg="green")
+            notes.append(_refresh_claude_desktop(changed))
+    for note in notes:
+        typer.echo(note)
+    typer.echo("Then just ask your agent: “Daddy, who am I?”")
+
+
+def _refresh_claude_desktop(changed: bool) -> str:
+    """The Claude app only reads its config at startup, so restart it for the user when it is open."""
+    if not changed:
+        return "Claude app: already connected."
+    if not connectors.claude_desktop_running():
+        return "Claude app: ready the next time you open it."
+    by_hand = "quit it fully (" + ("Cmd+Q" if sys.platform == "darwin" else "tray icon → Quit") + ") and open it again"
+    if sys.platform == "darwin" and sys.stdin.isatty() and typer.confirm(
+        "The Claude app is open and needs a quick restart to see Daddy (your chats are kept). Restart it now?",
+        default=True,
+    ):
+        if connectors.restart_claude_desktop():
+            return "Claude app: restarted, Daddy is ready."
+        return f"Claude app: couldn't restart it automatically; {by_hand}."
+    return f"Claude app: {by_hand} to see Daddy."
 
 
 @app.command()

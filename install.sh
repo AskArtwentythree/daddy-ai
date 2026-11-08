@@ -43,10 +43,11 @@ else
   set --
 fi
 
+TTY=/dev/null
+if ( : </dev/tty ) 2>/dev/null; then TTY=/dev/tty; fi
+
 if [ -n "$CODE" ]; then
   step "3/4 Joining your team"
-  TTY=/dev/null
-  if ( : </dev/tty ) 2>/dev/null; then TTY=/dev/tty; fi
   if ! "$DADDY" join "$CODE" "$@" <"$TTY"; then
     if "$DADDY" status >/dev/null 2>&1; then
       echo "Keeping this computer's current team."
@@ -68,14 +69,13 @@ else
 fi
 
 step "4/4 Connecting your AI apps"
-"$DADDY" connect all || echo "No Cursor, Claude Code or Claude app found; install one, then run \`daddy connect all\`."
+"$DADDY" connect all <"$TTY" || echo "No Cursor, Claude Code or Claude app found; install one, then run \`daddy connect all\`."
 
 step "Done!"
 if [ -z "${DADDY_NO_WINDOW:-}" ]; then
   "$DADDY" watch --window || echo "Run \`daddy watch\` in a new terminal to get messages from teammates live."
 fi
 echo "Messages, files and skills from teammates appear in the \`daddy watch\` window as they arrive."
-echo "Restart your AI app, then ask it: \"Daddy, who am I?\""
 if [ -z "$CODE" ]; then
   echo "Add your code:      cd your-project && daddy project create \"My App\" && daddy ingest ."
   echo "Invite teammates:   daddy invite -p my-app      (one link for your team chat)"

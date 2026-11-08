@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 from .config import home_dir
@@ -158,13 +159,61 @@ def claude_desktop_config() -> Path:
     return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
 
 
-def connect_claude_desktop() -> str:
-    """Add Daddy AI to the Claude desktop app's config; it picks it up after a full restart."""
+def connect_claude_desktop() -> tuple[str, bool]:
+    """Add Daddy AI to the Claude desktop app's config; returns (message, changed).
+
+    The app only reads this file at startup, so a change needs a restart (see `restart_claude_desktop`).
+    """
     path = claude_desktop_config()
     config = _load_json(path)
-    config.setdefault("mcpServers", {})["daddy"] = mcp_entry()
+    servers = config.setdefault("mcpServers", {})
+    changed = servers.get("daddy") != mcp_entry()
+    servers["daddy"] = mcp_entry()
     _write_json(path, config)
-    return f"MCP server 'daddy' → {path}"
+    return f"MCP server 'daddy' → {path}", changed
+
+
+def claude_desktop_running() -> bool:
+    if sys.platform == "win32":
+        tasks = subprocess.run(["tasklist", "/FI", "IMAGENAME eq claude.exe", "/NH"], capture_output=True,
+                               text=True, check=False)
+        return "claude.exe" in tasks.stdout.lower()
+    if sys.platform == "darwin":
+        return subprocess.run(["pgrep", "-x", "Claude"], capture_output=True, check=False).returncode == 0
+    return False
+
+
+def restart_claude_desktop() -> bool:
+    """Quit the Claude app the normal way (chats are kept) and open it again; macOS only."""
+    if sys.platform != "darwin":
+        return False
+    subprocess.run(["osascript", "-e", 'quit app "Claude"'], capture_output=True, check=False)
+    for _ in range(40):
+        if not claude_desktop_running():
+            break
+        time.sleep(0.25)
+    else:
+        return False
+    return subprocess.run(["open", "-a", "Claude"], capture_output=True, check=False).returncode == 0
+
+
+def connected_agents() -> list[str]:
+    """Apps already pointed at this Daddy connection: they pick up a new team without a restart."""
+    entry = mcp_entry()
+    places = {
+        "Cursor": Path.home() / ".cursor" / "mcp.json",
+        "the Claude app": claude_desktop_config(),
+        "Claude Code": Path.home() / ".claude.json",
+    }
+    found = []
+    for app, path in places.items():
+        try:
+            daddy = _load_json(path).get("mcpServers", {}).get("daddy") or {}
+        except (OSError, ValueError):
+            continue
+        if daddy.get("command") == entry["command"] and daddy.get("env", {}) == entry.get("env", {}):
+            found.append(app)
+    return found
 
 
 def detect_agents() -> list[str]:

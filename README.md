@@ -27,7 +27,9 @@ It asks three questions (team name, your name, your email), then:
 - connects every AI app it finds: Cursor (with the secret-blocking prompt guard), Claude Code and the Claude app
 - opens a `daddy watch` window where teammates' messages and files show up live
 
-**Restart your AI app** (for the Claude app, quit it fully) and ask it: **"Daddy, who am I?"**
+Then ask your agent: **"Daddy, who am I?"** There's no restart to do: Cursor picks Daddy up by itself,
+Claude Code has it in every new session, and if the Claude app is open the installer offers to restart it for you
+(your chats are kept). Joining or switching teams later never needs a restart either.
 
 ### 2. Give Daddy your project
 
@@ -105,7 +107,8 @@ To update, paste the install line again (without an invite code): it updates `da
 ### If something doesn't work
 
 - **`daddy: command not found`**: open a new terminal, or use the full path the installer printed.
-- **The agent doesn't know about Daddy**: restart the app completely, then run `daddy connect all` and restart again.
+- **The agent doesn't know about Daddy**: run `daddy connect all`. In Cursor, open a new chat; in Claude Code, start a
+  new session; if it still doesn't show up, quit the app fully and open it again.
 - **"Invite expired or already used"**: ask for a new one. Invites last 7 days; a personal invite works once and a
   team link until it's full.
 - **"…is already in this team"**: that email already joined, so a team link can't add it again. To add another
