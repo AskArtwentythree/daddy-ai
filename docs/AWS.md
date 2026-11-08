@@ -19,6 +19,13 @@ what to send back.
 
 Teammates' laptops only talk to the gateway over HTTPS and WebSocket. They never need AWS credentials.
 
+The diagram is [`daddy-ai-aws-architecture.drawio`](daddy-ai-aws-architecture.drawio). Open it at
+[app.diagrams.net](https://app.diagrams.net) (File, Open from, Device) or with the draw.io VS Code extension.
+
+Network layout: an ALB in public subnets across 2 AZs, with the EC2 gateway and RDS in private subnets.
+A NAT Gateway gives the private subnets outbound internet. The gateway needs it for Bedrock and S3 API calls
+(unless VPC endpoints are added) and for importing repos from `api.github.com`.
+
 ## Questions to ask the AWS team
 
 **Account and limits**
