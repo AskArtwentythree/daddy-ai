@@ -12,3 +12,11 @@ def test_text_and_binary_round_trip():
 
 def test_sizes_read_naturally():
     assert [describe_size(n) for n in (12, 4_200, 25_000_000)] == ["12 B", "4 KB", "25.0 MB"]
+
+
+def test_versions():
+    from daddy_common.version import cli_version_of, is_older
+
+    assert is_older("0.1", "0.2.0") and is_older("0.2.0", "0.10.0") and not is_older("0.2.0", "0.2.0")
+    assert cli_version_of("daddy-cli/0.1") == "0.1"
+    assert cli_version_of("Mozilla/5.0 (Macintosh)") is None

@@ -20,9 +20,10 @@ import typer
 from daddy_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
 from daddy_common.ignore import skip_reason
 from daddy_common.secrets import is_sensitive_path, scan_text
+from daddy_common.version import CLI_VERSION, is_older
 
 from . import connect as connectors
-from . import render
+from . import render, updates
 from .client import DaddyClient, DaddyError
 from .config import HOSTED_SERVER, Config, config_path, load_config, save_config
 from .installer import install
@@ -39,11 +40,31 @@ BATCH_BYTES = 3_000_000
 INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh"
 
 
+def _show_version(value: bool) -> None:
+    if value:
+        typer.echo(f"daddy {CLI_VERSION}")
+        raise typer.Exit()
+
+
+@app.callback()
+def _main(
+    version: Annotated[
+        bool, typer.Option("--version", callback=_show_version, is_eager=True, help="Show the version")
+    ] = False,
+) -> None:
+    pass
+
+
+def _tell_about_update(latest: str) -> None:
+    if updates.due(latest, "cli"):
+        typer.secho(updates.notice(latest), fg="yellow", err=True)
+
+
 def _client(config: Config | None = None, timeout: float = 120) -> DaddyClient:
     config = config or load_config()
     if not config.token:
         _fail("Not connected yet. Run `daddy init` (first person) or `daddy join <code>`.")
-    return DaddyClient(config, client_name="daddy-cli", timeout=timeout)
+    return DaddyClient(config, client_name="daddy-cli", timeout=timeout, on_update=_tell_about_update)
 
 
 def _fail(message: str) -> None:
@@ -173,6 +194,10 @@ def status() -> None:
         connected = cursor_mcp.exists() and '"daddy"' in cursor_mcp.read_text()
         typer.echo(f"Cursor ({scope}): {'connected' if connected else 'not connected'}")
     typer.echo(f"Config: {config_path()}")
+    if client.latest_cli and is_older(CLI_VERSION, client.latest_cli):
+        typer.secho(f"daddy {CLI_VERSION}, update available ({client.latest_cli}): run `daddy update`", fg="yellow")
+    else:
+        typer.echo(f"daddy {CLI_VERSION} (up to date)" if client.latest_cli else f"daddy {CLI_VERSION}")
 
 
 @app.command()
@@ -660,6 +685,32 @@ def connect(
     typer.echo("Then just ask your agent: “Daddy, who am I?”")
 
 
+@app.command()
+def update() -> None:
+    """Install the latest daddy and switch your AI apps and watch window over to it."""
+    uv = updates.find_uv()
+    if uv is None:
+        _fail(f"Can't find uv. Paste the install line again instead:\n  curl -fsSL {INSTALL_SCRIPT_URL} | sh")
+    if not updates.installed_as_uv_tool(uv):
+        _fail(f"This daddy runs from {sys.prefix}, not from the installer; update that checkout with `git pull`.")
+    reconnect = [connectors.executable(), "connect", "all"]
+    if sys.platform == "win32":
+        # Windows can't replace daddy.exe while it runs, so finish in a new window once this one exits.
+        script = f"timeout /t 2 >nul & {subprocess.list2cmdline(updates.install_command(uv))} & " \
+                 f"{subprocess.list2cmdline(reconnect)} & pause"
+        subprocess.Popen(["cmd", "/c", script], creationflags=subprocess.CREATE_NEW_CONSOLE)
+        typer.echo("Updating in a new window; follow it there.")
+        return
+    typer.echo(f"Updating daddy {CLI_VERSION}…")
+    if subprocess.run(updates.install_command(uv), check=False).returncode != 0:
+        _fail("The update failed; your current daddy still works. Try again, or paste the install line again.")
+    new = updates.installed_version() or "?"
+    typer.secho(f"✓ daddy {new} installed", fg="green")
+    if subprocess.run(reconnect, check=False).returncode != 0:
+        typer.echo("Run `daddy connect all` to finish connecting your apps.")
+    typer.echo("Your `daddy watch` window switches to the new version by itself within a minute.")
+
+
 def _refresh_claude_desktop(changed: bool) -> str:
     """The Claude app only reads its config at startup, so restart it for the user when it is open."""
     if not changed:
@@ -668,13 +719,13 @@ def _refresh_claude_desktop(changed: bool) -> str:
         return "Claude app: ready the next time you open it."
     by_hand = "quit it fully (" + ("Cmd+Q" if sys.platform == "darwin" else "tray icon → Quit") + ") and open it again"
     if sys.platform == "darwin" and sys.stdin.isatty() and typer.confirm(
-        "The Claude app is open and needs a quick restart to see Daddy (your chats are kept). Restart it now?",
+        "The Claude app is open and needs a quick restart to load Daddy (your chats are kept). Restart it now?",
         default=True,
     ):
         if connectors.restart_claude_desktop():
             return "Claude app: restarted, Daddy is ready."
         return f"Claude app: couldn't restart it automatically; {by_hand}."
-    return f"Claude app: {by_hand} to see Daddy."
+    return f"Claude app: {by_hand} to load Daddy."
 
 
 @app.command()

@@ -4,16 +4,20 @@ from __future__ import annotations
 
 import asyncio
 import json
+import os
 import platform
 import shlex
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable
 
 import websockets
 
 from daddy_common.files import from_payload
+from daddy_common.version import CLI_VERSION, is_older
 
+from . import updates
 from .client import DaddyClient, DaddyError
 from .config import Config, home_dir
 from .installer import install
@@ -125,6 +129,11 @@ class Watcher:
         kind = event.get("type")
         if kind == "hello":
             self.echo(f"Watching as {event['user']} on {event['device']}. Ctrl+C to stop.")
+            latest = event.get("latest_cli")
+            if latest and is_older(CLI_VERSION, latest):
+                self.echo(f"⬆ {updates.notice(latest)}")
+                if updates.due(latest, "watch"):
+                    notify("Daddy AI update", updates.notice(latest))
             self._show_waiting()
         elif kind == "delivery.new":
             self._show_delivery(event["delivery"])
@@ -150,7 +159,17 @@ class Watcher:
             self.echo(describe_audit(event["event"]))
         return True
 
+    async def _restart_after_update(self) -> None:
+        started_with = await asyncio.to_thread(updates.installed_version)
+        while started_with:
+            await asyncio.sleep(30)
+            now = await asyncio.to_thread(updates.installed_version)
+            if now and now != started_with:
+                self.echo(f"⬆ Daddy was updated to {now}, restarting the watch…")
+                os.execv(sys.argv[0], sys.argv)
+
     async def run(self) -> None:
+        self._restarter = asyncio.create_task(self._restart_after_update())
         delay = 1
         while True:
             try:

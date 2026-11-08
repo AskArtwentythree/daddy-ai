@@ -89,7 +89,8 @@ You rarely need these, but they're there:
 
 | Command | Does |
 | --- | --- |
-| `daddy status` | Who you are, your projects, your inbox, which agents are connected |
+| `daddy status` | Who you are, your projects, your inbox, which agents are connected, and whether an update is out |
+| `daddy update` | Install the newest version and switch your apps over to it |
 | `daddy rename "New Name"` | Change the name teammates see and send to (it must be unique in the team) |
 | `daddy watch` | Live window for messages, files and skills (the installer opens it for you) |
 | `daddy dashboard` | Opens the team dashboard in your browser |
@@ -102,7 +103,10 @@ You rarely need these, but they're there:
 | `daddy devices` / `daddy revoke <id>` | See connected computers and cut one off instantly |
 | `daddy audit -f` | Live log of every agent action (admins) |
 
-To update, paste the install line again (without an invite code): it updates `daddy` and reconnects your apps.
+**Updating:** run `daddy update`. It installs the newest version, Cursor and the watch window switch to it by
+themselves, and the Claude app is restarted for you if it's open. You don't have to keep track: when a new version
+is out, the watch window, `daddy status` and your agent tell you. (On a `daddy` from before 0.2, paste the install
+line again once instead.)
 
 ### If something doesn't work
 
@@ -254,6 +258,10 @@ uv run ruff check packages scripts
 uv run python scripts/mcp_smoke.py   # talk to `daddy mcp` exactly like Cursor does
 docker compose down -v               # wipe all data
 ```
+
+**Releasing a CLI change:** bump `CLI_VERSION` in `packages/common/src/daddy_common/version.py` and `version` in
+`packages/cli/pyproject.toml` (a test checks they match), push, then deploy the server. The server announces its
+`CLI_VERSION` as the latest, so every `daddy` behind it starts showing the update notice.
 
 | Package | Contents |
 | --- | --- |

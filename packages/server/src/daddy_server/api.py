@@ -19,6 +19,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from daddy_common.secrets import scan_text
+from daddy_common.version import CLI_VERSION, cli_version_of
 
 from . import delivery, retrieval
 from .audit import AuditScope, audited, record
@@ -63,6 +64,13 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="Daddy AI", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def advertise_latest_cli(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Daddy-Latest-Cli"] = CLI_VERSION
+    return response
 
 
 @app.exception_handler(PolicyDenied)
@@ -611,9 +619,10 @@ def get_inbox(all: bool = False, actor: Actor = Depends(require_actor)) -> list[
 
 
 @app.post("/api/inbox/{delivery_id}/accept")
-def accept(delivery_id: UUID, actor: Actor = Depends(require_actor)) -> dict:
+def accept(delivery_id: UUID, request: Request, actor: Actor = Depends(require_actor)) -> dict:
     with audited(actor, "delivery.accept", delivery=str(delivery_id)) as scope, connection() as conn:
-        item = delivery.accept(conn, actor, delivery_id)
+        item = delivery.accept(conn, actor, delivery_id,
+                               cli_version=cli_version_of(request.headers.get("user-agent")))
         scope.detail.update(filename=item["filename"], sender=item["from"])
     return item
 
@@ -697,7 +706,9 @@ async def events(websocket: WebSocket, token: str, client: str | None = None):
     queue = bus.subscribe(actor.user_id, actor.workspace_id if actor.is_admin else None, actor.device_id)
     await run_in_threadpool(record, actor, "device.online", "allow")
     try:
-        await websocket.send_json({"type": "hello", "user": actor.display_name, "device": actor.device_name})
+        await websocket.send_json(
+            {"type": "hello", "user": actor.display_name, "device": actor.device_name, "latest_cli": CLI_VERSION}
+        )
         while True:
             try:
                 event = await asyncio.wait_for(queue.get(), timeout=25)

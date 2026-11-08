@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 from urllib.parse import quote
 
 import httpx
+
+from daddy_common.version import CLI_VERSION, is_older
 
 from .config import Config
 
@@ -21,14 +24,22 @@ class DaddyError(Exception):
 
 
 class DaddyClient:
-    def __init__(self, config: Config, client_name: str | None = None, timeout: float = 120):
-        headers = {"User-Agent": "daddy-cli/0.1"}
+    def __init__(
+        self,
+        config: Config,
+        client_name: str | None = None,
+        timeout: float = 120,
+        on_update: Callable[[str], None] | None = None,
+    ):
+        headers = {"User-Agent": f"daddy-cli/{CLI_VERSION}"}
         if config.token:
             headers["Authorization"] = f"Bearer {config.token}"
         if client_name:
             headers["X-Daddy-Client"] = client_name
         self.config = config
         self.client_name = client_name
+        self.on_update = on_update
+        self.latest_cli: str | None = None
         self._http = httpx.Client(base_url=config.server_url, headers=headers, timeout=timeout)
 
     def request(self, method: str, path: str, **kwargs: Any) -> Any:
@@ -36,6 +47,11 @@ class DaddyClient:
             response = self._http.request(method, path, **kwargs)
         except httpx.ConnectError as error:
             raise DaddyError(0, f"Cannot reach Daddy AI at {self.config.server_url}") from error
+        latest = response.headers.get("X-Daddy-Latest-Cli")
+        if latest:
+            self.latest_cli = latest
+            if self.on_update and is_older(CLI_VERSION, latest):
+                self.on_update(latest)
         if response.status_code >= 400:
             try:
                 body = response.json()

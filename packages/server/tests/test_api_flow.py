@@ -211,5 +211,8 @@ def test_photos_and_pdfs_travel_byte_for_byte(api, monkeypatch):
     get_settings.cache_clear()
     assert too_big.status_code == 400 and "the limit is 1 KB" in too_big.json()["reason"]
 
+    old_cli = api.post(f"/api/inbox/{sent['id']}/accept", headers={**auth(quinn), "User-Agent": "daddy-cli/0.1"})
+    assert old_cli.status_code == 400 and "daddy update" in old_cli.json()["reason"]
+    assert old_cli.headers["X-Daddy-Latest-Cli"]
     accepted = api.post(f"/api/inbox/{sent['id']}/accept", headers=auth(quinn)).json()
     assert "content" not in accepted and base64.b64decode(accepted["content_base64"]) == photo

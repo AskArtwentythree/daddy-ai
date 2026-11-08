@@ -22,8 +22,9 @@ from mcp.shared.exceptions import MCPDeprecationWarning
 
 from daddy_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
 from daddy_common.secrets import is_sensitive_path, scan_text
+from daddy_common.version import CLI_VERSION, is_older
 
-from . import render
+from . import render, updates
 from .client import DaddyClient, DaddyError
 from .config import load_config, save_config
 from .installer import install
@@ -51,6 +52,13 @@ def _client_name(ctx: Context) -> str:
 
 def _client(ctx: Context) -> DaddyClient:
     return DaddyClient(load_config(), client_name=_client_name(ctx))
+
+
+def _with_update_note(client: DaddyClient, text: str) -> str:
+    latest = client.latest_cli
+    if latest and is_older(CLI_VERSION, latest) and updates.due(latest, "agent"):
+        return f"{text}\n\nTell the user: {updates.notice(latest)}"
+    return text
 
 
 async def _workspace_root(ctx: Context) -> Path:
@@ -85,7 +93,8 @@ async def whoami(ctx: Context) -> str:
     """Show whether this agent is connected to Daddy AI, as whom, and which projects it can see."""
     client = _client(ctx)
     try:
-        return render.status(await _api(lambda: client.get("/api/me")), client.config.server_url)
+        status = render.status(await _api(lambda: client.get("/api/me")), client.config.server_url)
+        return _with_update_note(client, status)
     except DaddyError as error:
         return _failure(error)
 
@@ -239,7 +248,7 @@ async def check_inbox(ctx: Context) -> str:
     """List files, skills and messages teammates have sent to the user that are not yet handled."""
     client = _client(ctx)
     try:
-        return render.inbox(await _api(lambda: client.get("/api/inbox")))
+        return _with_update_note(client, render.inbox(await _api(lambda: client.get("/api/inbox"))))
     except DaddyError as error:
         return _failure(error)
 

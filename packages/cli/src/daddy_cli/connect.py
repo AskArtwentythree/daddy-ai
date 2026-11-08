@@ -11,6 +11,8 @@ import sys
 import time
 from pathlib import Path
 
+from daddy_common.version import CLI_VERSION
+
 from .config import home_dir
 
 RULE = """---
@@ -55,15 +57,13 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 def mcp_entry(project_dir: Path | None = None) -> dict:
-    env = {}
+    """The MCP server entry; the version in it changes with each update, which makes Cursor reload Daddy."""
+    env = {"DADDY_CLI_VERSION": CLI_VERSION}
     if home := custom_home():
         env["DADDY_HOME"] = home
     if project_dir is not None:
         env["DADDY_WORKSPACE"] = str(project_dir.resolve())
-    entry: dict = {"command": executable(), "args": ["mcp"]}
-    if env:
-        entry["env"] = env
-    return entry
+    return {"command": executable(), "args": ["mcp"], "env": env}
 
 
 def connect_cursor(project_dir: Path | None, hooks: bool) -> list[str]:
@@ -199,6 +199,9 @@ def restart_claude_desktop() -> bool:
 
 def connected_agents() -> list[str]:
     """Apps already pointed at this Daddy connection: they pick up a new team without a restart."""
+    def identity(env: dict) -> dict:
+        return {k: v for k, v in env.items() if k != "DADDY_CLI_VERSION"}
+
     entry = mcp_entry()
     places = {
         "Cursor": Path.home() / ".cursor" / "mcp.json",
@@ -211,7 +214,7 @@ def connected_agents() -> list[str]:
             daddy = _load_json(path).get("mcpServers", {}).get("daddy") or {}
         except (OSError, ValueError):
             continue
-        if daddy.get("command") == entry["command"] and daddy.get("env", {}) == entry.get("env", {}):
+        if daddy.get("command") == entry["command"] and identity(daddy.get("env", {})) == identity(entry["env"]):
             found.append(app)
     return found
 

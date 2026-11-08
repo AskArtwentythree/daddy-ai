@@ -6,6 +6,9 @@ from daddy_cli import connect, watch
 from daddy_cli.config import Config
 from daddy_cli.hooks import _snake
 from daddy_cli.installer import install
+from daddy_common.version import CLI_VERSION
+
+STAMP = {"DADDY_CLI_VERSION": CLI_VERSION}
 
 
 def _config(tmp_path) -> Config:
@@ -90,7 +93,8 @@ def test_connect_claude_desktop_keeps_other_servers(tmp_path, monkeypatch):
 
     config = json.loads(path.read_text())
     assert config["theme"] == "dark"
-    assert config["mcpServers"] == {"other": {"command": "x"}, "daddy": {"command": "/opt/daddy", "args": ["mcp"]}}
+    daddy = {"command": "/opt/daddy", "args": ["mcp"], "env": STAMP}
+    assert config["mcpServers"] == {"other": {"command": "x"}, "daddy": daddy}
     assert connect.connected_agents() == ["the Claude app"]
     monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy-other"))
     assert connect.connected_agents() == []
@@ -110,7 +114,7 @@ def test_connect_cursor_merges_existing_config(tmp_path, monkeypatch):
 
     servers = json.loads((cursor / "mcp.json").read_text())["mcpServers"]
     assert servers["other"] == {"command": "x"}
-    assert servers["daddy"] == {"command": "/opt/daddy", "args": ["mcp"]}
+    assert servers["daddy"] == {"command": "/opt/daddy", "args": ["mcp"], "env": STAMP}
     hooks = json.loads((cursor / "hooks.json").read_text())["hooks"]
     assert [h["command"] for h in hooks["stop"]] == ["mine", "/opt/daddy hook audit"]
     assert hooks["beforeSubmitPrompt"] == [{"command": "/opt/daddy hook prompt-check"}]
@@ -160,3 +164,33 @@ def test_photos_are_saved_byte_for_byte(tmp_path):
     [again] = install(item, photo[:-1], _config(tmp_path))
     assert again.read_bytes() == photo[:-1]
     assert len(list(written.parent.glob("cat.png.bak-*"))) == 1
+
+
+def test_version_numbers_agree():
+    import tomllib
+    from pathlib import Path
+
+    pyproject = Path(__file__).parents[1] / "pyproject.toml"
+    assert tomllib.loads(pyproject.read_text())["project"]["version"] == CLI_VERSION
+
+
+def test_update_notices_do_not_nag(tmp_path, monkeypatch):
+    from daddy_cli import updates
+
+    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy"))
+    assert updates.due("9.0.0", "cli") is True
+    assert updates.due("9.0.0", "cli") is False
+    assert updates.due("9.0.0", "agent") is True
+    assert updates.due("9.1.0", "cli") is True
+    assert "daddy update" in updates.notice("9.1.0")
+
+
+def test_already_connected_ignores_the_version_stamp(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy"))
+    monkeypatch.setattr(connect, "executable", lambda: "/opt/daddy")
+    cursor = tmp_path / ".cursor" / "mcp.json"
+    cursor.parent.mkdir()
+    old = {"command": "/opt/daddy", "args": ["mcp"], "env": {"DADDY_CLI_VERSION": "0.0.1"}}
+    cursor.write_text(json.dumps({"mcpServers": {"daddy": old}}))
+    assert connect.connected_agents() == ["Cursor"]

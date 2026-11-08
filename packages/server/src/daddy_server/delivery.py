@@ -13,6 +13,7 @@ import psycopg
 
 from daddy_common.files import as_text, describe_size, to_payload
 from daddy_common.secrets import is_sensitive_path, scan_text
+from daddy_common.version import BINARY_FILES_SINCE, is_older
 
 from .auth import Actor
 from .blobs import get_blob_store
@@ -202,11 +203,17 @@ def _own_delivery(conn: psycopg.Connection, actor: Actor, delivery_id: UUID) -> 
     return row
 
 
-def accept(conn: psycopg.Connection, actor: Actor, delivery_id: UUID) -> dict:
+def accept(conn: psycopg.Connection, actor: Actor, delivery_id: UUID, *, cli_version: str | None = None) -> dict:
     row = _own_delivery(conn, actor, delivery_id)
     if row["status"] == "declined":
         raise InvalidRequest("This item was declined")
     payload = to_payload(get_blob_store().get(row["blob_key"]))
+    if "content_base64" in payload and cli_version and is_older(cli_version, BINARY_FILES_SINCE):
+        raise InvalidRequest(
+            f"'{row['filename']}' is a photo, PDF or other non-text file, and your daddy ({cli_version}) is too "
+            f"old to save it. Update with `daddy update` (or paste the Daddy install line again), then accept it "
+            "again. It stays in your inbox."
+        )
     conn.execute(
         "UPDATE deliveries SET status = 'accepted', acted_at = coalesce(acted_at, now()) WHERE id = %s",
         (delivery_id,),
