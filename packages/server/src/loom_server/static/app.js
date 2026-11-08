@@ -237,7 +237,7 @@ function renderProjects(projects) {
 function untilTime(iso) {
   const hours = Math.max(0, (new Date(iso).getTime() - Date.now()) / 3600000);
   if (hours < 1) return "in under an hour";
-  if (hours < 48) return `in ${Math.round(hours)} h`;
+  if (hours < 36) return `in ${Math.round(hours)} h`;
   return `in ${Math.round(hours / 24)} days`;
 }
 
@@ -245,7 +245,7 @@ function renderInviteProjects(projects) {
   const choices = projects.filter(canManage).map((p) => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`);
   if (state.isAdmin) choices.push(`<option value="">The whole family, no project yet</option>`);
   const select = $("#invite-project");
-  const chosen = select.value;
+  const chosen = select.options.length ? select.value : null;
   select.innerHTML = choices.join("");
   if ([...select.options].some((o) => o.value === chosen)) select.value = chosen;
   $("#invite-panel").hidden = choices.length === 0;
