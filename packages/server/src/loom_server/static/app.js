@@ -548,7 +548,7 @@ function viewProject(r) {
           `<tr><td><div class="person"><span class="avatar">${esc(initials(m.name))}</span><div style="min-width:0"><b>${esc(m.name)}</b><small>${esc(cap(roleOf(m)))}</small></div></div></td></tr>`).join("")}</tbody></table></div></div>` : ""}
     ${tab === "files" ? `<input class="filter-in" data-act="filefilter" placeholder="Filter by path" aria-label="Filter files by path"><div class="card files" data-slot="files"><p class="empty">Loading…</p></div>` : ""}
     ${tab === "people" ? peopleTab(p, members, roleOf) : ""}
-    ${tab === "ask" ? askBar(`p:${p.slug}`, { project: p.slug, placeholder: `What does ${p.name} use for auth?` }) : ""}`;
+    ${tab === "ask" ? `${p.documents ? "" : `<div class="card empty-card">${emptyHint(p.slug)}</div>`}${askBar(`p:${p.slug}`, { project: p.slug, placeholder: `What does ${p.name} use for auth?` })}` : ""}`;
 }
 
 function peopleTab(p, members, roleOf) {
@@ -595,6 +595,13 @@ function renderFiles(slug, filter = "") {
 }
 
 // ── Asking ───────────────────────────────────────────────────────────────────
+function emptyHint(slug) {
+  const p = S.team.projects.find((x) => x.slug === slug);
+  if (!p || p.documents) return "";
+  return `<div class="empty-hint"><b>${esc(p.name)} has no files yet</b>, so there's nothing to answer from.
+    In the project's folder run <code>loom ingest . -p ${esc(p.slug)}</code>, or import a repo with
+    <code>loom github owner/repo -p ${esc(p.slug)}</code>. Notes saved here count too.</div>`;
+}
 function answerCard(a) {
   if (a.pending) return `<div class="card answer"><div class="card-h">${esc(clip(a.q, 90))}</div><div class="card-b"><span style="color:var(--faint)">Searching…</span></div></div>`;
   if (a.error) return `<div class="card answer refused"><div class="card-h">${esc(clip(a.q, 90))}</div><div class="card-b"><p class="err" style="margin:0">${esc(a.error)}</p></div></div>`;
@@ -602,7 +609,7 @@ function answerCard(a) {
   const text = md(res.answer).replace(/\[(\d+)\]/g, (m, n) => (res.citations.some((c) => c.n === +n) ? `<span class="cite">${n}</span>` : m));
   return `<div class="card answer ${res.grounded ? "" : "refused"}">
     <div class="card-h"><span class="q">${esc(clip(a.q, 120))}</span><span class="right">${res.grounded ? plural(res.citations.length, "source") : "No matching sources"}</span></div>
-    <div class="card-b"><div class="md">${text}</div></div>
+    <div class="card-b"><div class="md">${text}</div>${res.grounded ? "" : emptyHint(a.project)}</div>
     ${res.citations.length ? `<div class="srcs">${res.citations.map((c) => `<button class="src" data-act="file" data-slug="${esc(c.project)}" data-path="${esc(c.path)}"><span class="cite">${c.n}</span><span style="min-width:0"><span class="p">${esc(c.path)}:${esc(c.lines)}</span>${c.section ? `<span class="h">${esc(c.section)}</span>` : ""}</span><span class="s">${esc(c.project)}</span></button>`).join("")}</div>` : ""}
     ${res.top_score == null ? "" : `<div class="meta-line">Relevance ${res.top_score.toFixed(2)} (needs ${res.threshold})</div>`}
   </div>`;
@@ -613,7 +620,7 @@ async function ask(form) {
   if (!q) return;
   const project = form.dataset.project || form.querySelector("[data-ask-project]")?.value || null;
   const list = S.asks[id] || (S.asks[id] = []);
-  const entry = { q, pending: true };
+  const entry = { q, project, pending: true };
   list.unshift(entry);
   list.length = Math.min(list.length, 5);
   form.q.value = "";
