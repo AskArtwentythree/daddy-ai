@@ -98,17 +98,20 @@ def test_family_flow(api):
     assert api.get("/api/me", headers=auth(bob)).status_code == 401
 
 
-def test_open_signup_families_are_isolated(api, monkeypatch):
+def _new_family(api, monkeypatch, family: str, name: str) -> str:
     from daddy_server.config import get_settings
 
     monkeypatch.setenv("DADDY_OPEN_SIGNUP", "true")
     get_settings.cache_clear()
-    zed = api.post(
-        "/api/bootstrap",
-        json={"family_name": "Other Team", "email": "zed@example.com", "display_name": "Zed", "device_name": "z"},
-    ).json()["token"]
+    body = {"family_name": family, "email": f"{name.lower()}@example.com", "display_name": name, "device_name": "d"}
+    token = api.post("/api/bootstrap", json=body).json()["token"]
     monkeypatch.delenv("DADDY_OPEN_SIGNUP")
     get_settings.cache_clear()
+    return token
+
+
+def test_open_signup_families_are_isolated(api, monkeypatch):
+    zed = _new_family(api, monkeypatch, "Other Team", "Zed")
 
     assert api.get("/api/projects", headers=auth(zed)).json() == []
     answer = api.post("/api/ask", headers=auth(zed), json={"query": "How do we deploy the gateway?"}).json()
@@ -121,3 +124,35 @@ def test_open_signup_families_are_isolated(api, monkeypatch):
     family = api.get("/api/family", headers=auth(zed)).json()
     assert [m["name"] for m in family["members"]] == ["Zed"]
     assert {e["user"] for e in api.get("/api/audit", headers=auth(zed)).json()} <= {"Zed", None}
+
+
+def test_team_link_lets_several_people_join(api, monkeypatch):
+    kim = _new_family(api, monkeypatch, "Link Team", "Kim")
+    api.post("/api/projects", json={"name": "Demo"}, headers=auth(kim))
+    assert api.post("/api/invites", headers=auth(kim), json={"project": "demo", "role": "owner"}).status_code == 400
+    link = api.post("/api/invites", headers=auth(kim), json={"project": "demo", "max_uses": 2}).json()
+    assert link["max_uses"] == 2
+
+    def join(email, name):
+        body = {"code": link["code"], "device_name": "d", "email": email, "display_name": name}
+        return api.post("/api/join", json=body)
+
+    assert api.post("/api/join", json={"code": link["code"], "device_name": "d"}).status_code == 400
+    assert join("kim@example.com", "Not Kim").status_code == 403
+    lee = join("lee@example.com", "Lee").json()["token"]
+    assert join("max@example.com", "Max").status_code == 200
+    assert join("ned@example.com", "Ned").status_code == 403
+    assert [p["slug"] for p in api.get("/api/projects", headers=auth(lee)).json()] == ["demo"]
+
+    again = api.post("/api/invites", headers=auth(kim), json={"project": "demo"}).json()["code"]
+    assert api.post("/api/invites/cancel", headers=auth(lee), json={"code": again}).status_code == 404
+    assert api.post("/api/invites/cancel", headers=auth(kim), json={"code": again}).json()["cancelled"]
+    body = {"code": again, "device_name": "d", "email": "ola@example.com", "display_name": "Ola"}
+    assert api.post("/api/join", json=body).status_code == 403
+
+    personal = api.post(
+        "/api/invites", headers=auth(kim), json={"email": "pat@example.com", "display_name": "Pat"}
+    ).json()
+    assert personal["max_uses"] == 1
+    assert api.post("/api/join", json={"code": personal["code"], "device_name": "d"}).json()["user"] == "Pat"
+    assert api.post("/api/join", json={"code": personal["code"], "device_name": "d"}).status_code == 403

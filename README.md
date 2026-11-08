@@ -44,17 +44,24 @@ stopped on your computer. Run it again whenever the code changes a lot.
 ### 3. Invite your teammates
 
 ```bash
-daddy invite sri@example.com --name Sri --project my-app
+daddy invite -p my-app
 ```
 
-This prints one line. **Send it to Sri privately** (the code works once, like a password). Sri pastes it into a terminal:
+This prints **one team link**. Paste it into your team chat. Each teammate pastes it into a terminal:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh | sh -s -- inv_…
 ```
 
-Sri is now in your team and in `my-app`, with their AI apps connected. The email is only Sri's identity in the team;
-nothing is ever emailed.
+It asks for their name and email, then puts them in your team and in `my-app` with their AI apps connected. The email
+is only their identity in the team; nothing is ever emailed.
+
+The link lets in up to 20 people (`--uses 50` for more) and expires after 7 days. Treat it like a password for
+your team chat: anyone who has it can join. You see everyone who joined in `daddy status`, the dashboard and the audit
+log, `daddy revoke` cuts off a computer, and `daddy cancel-invite inv_…` stops the link early.
+
+For one specific person, `daddy invite sri@example.com --name Sri -p my-app` makes a personal invite that works once.
+Personal invites can also make someone a project owner (`--role owner`); team links can't.
 
 ### 4. Just talk to your agent
 
@@ -86,7 +93,8 @@ You rarely need these, but they're there:
 | `daddy send Sri ./notes.md` | Send a file, a skill (`SKILL.md`) or `--message "…"` |
 | `daddy project create "Name"` | A new project; you become its owner |
 | `daddy project add-member my-app sri@example.com` | Give someone already in the team access to a project |
-| `daddy invite …` | Bring a new person into the team |
+| `daddy invite -p my-app` | One team link for your chat (or `daddy invite sri@example.com -n Sri` for one person) |
+| `daddy cancel-invite inv_…` | Stop an invite or team link from working |
 | `daddy devices` / `daddy revoke <id>` | See connected computers and cut one off instantly |
 | `daddy audit -f` | Live log of every agent action (admins) |
 
@@ -96,7 +104,10 @@ To update, paste the install line again (without an invite code): it updates `da
 
 - **`daddy: command not found`**: open a new terminal, or use the full path the installer printed.
 - **The agent doesn't know about Daddy**: restart the app completely, then run `daddy connect all` and restart again.
-- **"Invite expired or already used"**: ask for a new invite. Each code works once and lasts 7 days.
+- **"Invite expired or already used"**: ask for a new one. Invites last 7 days; a personal invite works once and a
+  team link until it's full.
+- **"…is already in this team"**: that email already joined, so a team link can't add it again. To add another
+  computer for the same person, the admin sends a personal invite.
 - **Windows**: use WSL, or install [uv](https://docs.astral.sh/uv/) and run
   `uv tool install "git+https://github.com/AskArtwentythree/daddy-ai#subdirectory=packages/cli"`, then
   `daddy init` (or `daddy join <code>`) and `daddy connect all`.

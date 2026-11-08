@@ -2,6 +2,7 @@
 # Daddy AI one-line setup (macOS and Linux).
 #   Start a new team:   curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh | sh
 #   Join a team:        curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh | sh -s -- INVITE_CODE
+#                       (a team link asks for your name and email; DADDY_NAME and DADDY_EMAIL answer it ahead of time)
 # Installs uv and the `daddy` command, creates or joins a family on the hosted Daddy AI (or SERVER_URL, the
 # optional second argument, for a self-hosted one), connects Cursor, Claude Code and the Claude app, and opens
 # `daddy watch`. On a computer that is already connected it just updates and reconnects. Safe to run again.
@@ -44,11 +45,13 @@ fi
 
 if [ -n "$CODE" ]; then
   step "3/4 Joining your team"
-  if ! "$DADDY" join "$CODE" "$@"; then
+  TTY=/dev/null
+  if ( : </dev/tty ) 2>/dev/null; then TTY=/dev/tty; fi
+  if ! "$DADDY" join "$CODE" "$@" <"$TTY"; then
     if "$DADDY" status >/dev/null 2>&1; then
       echo "This computer is already connected, keeping that."
     else
-      echo "Ask your admin for a new invite: they run \`daddy invite <email> --name <name>\`." >&2
+      echo "Ask your admin for a new invite or team link: they run \`daddy invite -p <project>\`." >&2
       exit 1
     fi
   fi
@@ -75,5 +78,5 @@ echo "Messages, files and skills from teammates appear in the \`daddy watch\` wi
 echo "Restart your AI app, then ask it: \"Daddy, who am I?\""
 if [ -z "$CODE" ]; then
   echo "Add your code:      cd your-project && daddy project create \"My App\" && daddy ingest ."
-  echo "Invite teammates:   daddy invite friend@example.com --name Friend --project my-app"
+  echo "Invite teammates:   daddy invite -p my-app      (one link for your team chat)"
 fi

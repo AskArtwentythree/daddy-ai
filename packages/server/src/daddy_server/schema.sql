@@ -48,6 +48,12 @@ CREATE TABLE IF NOT EXISTS invites (
     expires_at    timestamptz NOT NULL,
     used_at       timestamptz
 );
+-- Team links have no email or name (each person gives their own when joining) and work up to max_uses times.
+-- used_at is set once the last use is taken; cancelling a link sets expires_at to now.
+ALTER TABLE invites ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE invites ALTER COLUMN display_name DROP NOT NULL;
+ALTER TABLE invites ADD COLUMN IF NOT EXISTS max_uses integer NOT NULL DEFAULT 1;
+ALTER TABLE invites ADD COLUMN IF NOT EXISTS uses integer NOT NULL DEFAULT 0;
 
 -- One row per connected computer; every agent on it acts through this token.
 CREATE TABLE IF NOT EXISTS devices (

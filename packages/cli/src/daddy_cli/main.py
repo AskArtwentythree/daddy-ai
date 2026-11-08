@@ -88,7 +88,7 @@ def init(
     config.token, config.user, config.family = result["token"], result["user"], result["family"]
     save_config(config)
     typer.secho(f"Welcome, {name}! You are the admin of the '{family}' family.", fg="green")
-    typer.echo("Next: `daddy project create <name>`, `daddy ingest .`, then `daddy invite <email> --name <name>`.")
+    typer.echo("Next: `daddy project create <name>`, `daddy ingest .`, then `daddy invite -p <project>`.")
 
 
 @app.command()
@@ -96,15 +96,23 @@ def join(
     code: str,
     server: Annotated[str, typer.Option(help="Daddy AI URL (default: the hosted Daddy AI)")] = HOSTED_SERVER,
     device: Annotated[str | None, typer.Option(help="Name for this computer")] = None,
+    name: Annotated[str | None, typer.Option(envvar="DADDY_NAME", help="Your name (team links ask for it)")] = None,
+    email: Annotated[str | None, typer.Option(envvar="DADDY_EMAIL", help="Your email (team links ask)")] = None,
 ) -> None:
-    """Join a family with the invite code an admin gave you."""
+    """Join a family with the invite code or team link an admin gave you."""
     config = load_config()
     config.server_url = server.rstrip("/")
-    result = _call(
-        DaddyClient(config).post,
-        "/api/join",
-        {"code": code, "device_name": device or _device_name()},
-    )
+    client = DaddyClient(config)
+    body = {"code": code, "device_name": device or _device_name(), "display_name": name, "email": email}
+    try:
+        result = client.post("/api/join", body)
+    except DaddyError as error:
+        if "needs your name and email" not in error.reason:
+            _fail(("Denied: " if error.denied else "Error: ") + error.reason)
+        typer.echo("This is a team link, so tell the team who you are.")
+        body["display_name"] = name or typer.prompt("Your name")
+        body["email"] = email or typer.prompt("Your email")
+        result = _call(client.post, "/api/join", body)
     config.token, config.user, config.family = result["token"], result["user"], result["family"]
     save_config(config)
     typer.secho(f"Welcome to the '{result['family']}' family, {result['user']}!", fg="green")
@@ -135,20 +143,31 @@ def logout() -> None:
 
 @app.command()
 def invite(
-    email: str,
-    name: Annotated[str, typer.Option("--name", "-n", help="Their display name")],
+    email: Annotated[str | None, typer.Argument(help="Leave out to get one team link for a group chat")] = None,
+    name: Annotated[str | None, typer.Option("--name", "-n", help="Their display name")] = None,
     project: ProjectOpt = None,
     role: Annotated[str, typer.Option(help="owner, member or viewer")] = "member",
+    uses: Annotated[int, typer.Option(help="How many people a team link lets in")] = 20,
 ) -> None:
-    """Create a one-time invite code for a new family member."""
+    """Invite people: `daddy invite -p my-app` gives one team link; `daddy invite sri@x.com -n Sri` a personal one."""
+    if email and not name:
+        name = email.split("@")[0].replace(".", " ").title()
     result = _call(
         _client().post,
         "/api/invites",
-        {"email": email, "display_name": name, "project": project, "role": role},
+        {"email": email, "display_name": name, "project": project, "role": role, "max_uses": uses},
     )
     server = load_config().server_url
     days = result["expires_in_days"]
-    typer.secho(f"Invite for {name} (valid {days} days). Send them this line privately:", fg="green")
+    target = f"the '{project}' project" if project else "your team"
+    if email:
+        typer.secho(f"Invite for {name} (valid {days} days). Send them this line privately:", fg="green")
+    else:
+        typer.secho(
+            f"Team link to {target}: up to {result['max_uses']} people, valid {days} days. "
+            "Paste it in your team chat; each person types their own name and email when they run it:",
+            fg="green",
+        )
     where = "" if server == HOSTED_SERVER else f" {server}"
     typer.echo(f"  curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {result['code']}{where}")
     typer.echo("If they already have the `daddy` command:")
@@ -159,6 +178,15 @@ def invite(
             "this invite. To move to the hosted Daddy AI, run `daddy logout`, then the install line from the README.",
             fg="yellow",
         )
+    if not email:
+        typer.echo(f"Stop it working early: daddy cancel-invite {result['code']}")
+
+
+@app.command("cancel-invite")
+def cancel_invite(code: str) -> None:
+    """Stop an invite or team link from working; people who already joined stay."""
+    result = _call(_client().post, "/api/invites/cancel", {"code": code})
+    typer.echo(f"Cancelled. {result['used_by']} people had joined with it.")
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────

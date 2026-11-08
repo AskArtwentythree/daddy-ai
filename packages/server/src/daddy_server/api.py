@@ -92,15 +92,24 @@ class BootstrapBody(BaseModel):
 
 
 class InviteBody(BaseModel):
-    email: str
-    display_name: str = Field(min_length=1, max_length=80)
+    """A personal invite (email and name) works once; without them it is a team link for up to max_uses people."""
+
+    email: str | None = None
+    display_name: str | None = Field(default=None, min_length=1, max_length=80)
     project: str | None = None
     role: Role = "member"
+    max_uses: int = Field(default=20, ge=1, le=200)
+
+
+class CancelInviteBody(BaseModel):
+    code: str
 
 
 class JoinBody(BaseModel):
     code: str
     device_name: str = Field(min_length=1, max_length=80)
+    email: str | None = None
+    display_name: str | None = Field(default=None, max_length=80)
 
 
 class ProjectBody(BaseModel):
@@ -239,16 +248,39 @@ def create_invite(body: InviteBody, actor: Actor = Depends(require_actor)) -> di
             project_id = project.id
         else:
             require_admin(actor)
+        team_link = body.email is None
+        if team_link and body.role == "owner":
+            raise InvalidRequest("A team link can't make people owners; send a personal invite instead")
+        if not team_link and not body.display_name:
+            raise InvalidRequest("A personal invite needs the person's name")
+        max_uses = body.max_uses if team_link else 1
         code, code_hash = new_secret(INVITE_PREFIX)
         conn.execute(
             """
-            INSERT INTO invites (code_hash, workspace_id, email, display_name, project_id, role, created_by, expires_at)
-            VALUES (%s, %s, lower(%s), %s, %s, %s, %s, %s)
+            INSERT INTO invites (code_hash, workspace_id, email, display_name, project_id, role, created_by,
+                                 expires_at, max_uses)
+            VALUES (%s, %s, lower(%s), %s, %s, %s, %s, %s, %s)
             """,
             (code_hash, actor.workspace_id, body.email, body.display_name, project_id, body.role,
-             actor.user_id, datetime.now(UTC) + timedelta(days=7)),
+             actor.user_id, datetime.now(UTC) + timedelta(days=7), max_uses),
         )
-    return {"code": code, "expires_in_days": 7}
+    return {"code": code, "expires_in_days": 7, "max_uses": max_uses}
+
+
+@app.post("/api/invites/cancel")
+def cancel_invite(body: CancelInviteBody, actor: Actor = Depends(require_actor)) -> dict:
+    with audited(actor, "invite.cancel"), connection() as conn:
+        row = conn.execute(
+            """
+            UPDATE invites SET expires_at = now()
+            WHERE code_hash = %s AND workspace_id = %s AND (%s OR created_by = %s) AND expires_at > now()
+            RETURNING uses
+            """,
+            (hash_secret(body.code.strip()), actor.workspace_id, actor.is_admin, actor.user_id),
+        ).fetchone()
+        if row is None:
+            raise NotFound("No active invite with that code that you can cancel")
+    return {"cancelled": True, "used_by": row["uses"]}
 
 
 @app.post("/api/join")
@@ -264,13 +296,23 @@ def join(body: JoinBody) -> dict:
         ).fetchone()
         if invite is None:
             raise PolicyDenied("Invite code is invalid, expired or already used")
+        email, name = invite["email"], invite["display_name"]
+        if email is None:
+            email, name = (body.email or "").strip().lower(), (body.display_name or "").strip()
+            if "@" not in email or not name:
+                raise InvalidRequest("This team link needs your name and email")
+            taken = conn.execute(
+                "SELECT 1 FROM users WHERE workspace_id = %s AND email = %s", (invite["workspace_id"], email)
+            ).fetchone()
+            if taken:
+                raise PolicyDenied(f"{email} is already in this team; ask its admin for a personal invite")
         user_id = conn.execute(
             """
             INSERT INTO users (workspace_id, email, display_name) VALUES (%s, %s, %s)
             ON CONFLICT (workspace_id, email) DO UPDATE SET display_name = users.display_name
             RETURNING id
             """,
-            (invite["workspace_id"], invite["email"], invite["display_name"]),
+            (invite["workspace_id"], email, name),
         ).fetchone()["id"]
         if invite["project_id"]:
             conn.execute(
@@ -281,11 +323,17 @@ def join(body: JoinBody) -> dict:
                 (invite["project_id"], user_id, invite["role"]),
             )
             refresh_brief(conn, invite["project_id"])
-        conn.execute("UPDATE invites SET used_at = now() WHERE code_hash = %s", (invite["code_hash"],))
+        conn.execute(
+            """
+            UPDATE invites SET uses = uses + 1, used_at = CASE WHEN uses + 1 >= max_uses THEN now() END
+            WHERE code_hash = %s
+            """,
+            (invite["code_hash"],),
+        )
         token = _issue_device(conn, user_id, body.device_name)
     record(None, "family.join", "allow", workspace_id=invite["workspace_id"],
-           detail={"email": invite["email"], "device": body.device_name})
-    return {"token": token, "family": invite["family"], "user": invite["display_name"]}
+           detail={"email": email, "device": body.device_name, "team_link": invite["email"] is None})
+    return {"token": token, "family": invite["family"], "user": name}
 
 
 @app.get("/api/me")
