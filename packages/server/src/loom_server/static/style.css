@@ -123,6 +123,7 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 
 .columns { display: grid; grid-template-columns: 1fr 1fr; gap: 48px; margin-top: 34px; }
 .columns-lower { grid-template-columns: 7fr 5fr; margin-top: 44px; }
+.columns > *, .invite-body > * { min-width: 0; }
 
 .panel-head {
   display: flex;
