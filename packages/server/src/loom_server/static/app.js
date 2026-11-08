@@ -262,6 +262,8 @@ function describe(event) {
       return `opened ${file(d.path)}`;
     case "ingest.upload":
       return `added ${d.indexed ?? 0} file${d.indexed === 1 ? "" : "s"} to project knowledge`;
+    case "ingest.prune":
+      return `removed ${d.removed ?? 0} deleted file${d.removed === 1 ? "" : "s"} from project knowledge`;
     case "ingest.github":
     case "ingest.github.request":
       return `imported ${file(d.repo)} from GitHub`;

@@ -347,6 +347,8 @@ def _list_files(root: Path) -> list[Path]:
 def ingest(
     path: Annotated[Path, typer.Argument(help="Folder or file to add")] = Path("."),
     project: ProjectOpt = None,
+    prune: Annotated[bool, typer.Option(
+        "--prune", help="Also forget files added from this folder before that no longer exist in it")] = False,
 ) -> None:
     """Add a local folder's code and docs to a project (secrets never leave this computer)."""
     client = _client(timeout=600)
@@ -415,6 +417,15 @@ def ingest(
     for skip in server_skips:
         typer.echo(f"  skipped by server: {skip['path']}: {skip['reason']}")
     typer.echo(f"Skipped locally (empty, binary, lock, ignored): {len(local_skips) - len(secret_skips)}")
+    if prune and files:
+        keep = [item["path"] for item in files]
+        removed = _call(client.post, f"/api/projects/{slug}/documents/prune",
+                        {"source": f"local:{root.name}", "keep": keep})["removed"]
+        typer.secho(f"Forgot {len(removed)} file(s) no longer in {root.name}.", fg="green")
+        for path in removed[:10]:
+            typer.echo(f"  {path}")
+        if len(removed) > 10:
+            typer.echo(f"  … and {len(removed) - 10} more")
 
 
 @app.command()

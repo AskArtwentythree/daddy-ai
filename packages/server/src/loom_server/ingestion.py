@@ -147,13 +147,17 @@ def ingest_files(
         report.chunks += len(chunks)
 
     if prune_missing:
-        seen = [normalize_path(f.path) for f in files]
-        rows = conn.execute(
-            "DELETE FROM documents WHERE project_id = %s AND source = %s AND NOT (path = ANY(%s)) RETURNING path",
-            (project_id, source, seen),
-        ).fetchall()
-        report.removed = [r["path"] for r in rows]
+        report.removed = prune_source(conn, project_id, source, [f.path for f in files])
     return report
+
+
+def prune_source(conn: psycopg.Connection, project_id: UUID, source: str, keep: list[str]) -> list[str]:
+    """Forget files that came from ``source`` but are no longer in it; returns their paths."""
+    rows = conn.execute(
+        "DELETE FROM documents WHERE project_id = %s AND source = %s AND NOT (path = ANY(%s)) RETURNING path",
+        (project_id, source, [normalize_path(p) for p in keep]),
+    ).fetchall()
+    return sorted(r["path"] for r in rows)
 
 
 def note_path(title: str) -> str:

@@ -39,7 +39,7 @@ from .config import get_settings
 from .db import close_pool, connection, open_pool
 from .errors import InvalidRequest, NotFound, PolicyDenied
 from .events import bus
-from .ingestion import FileInput, fetch_github_snapshot, ingest_files, normalize_path, note_path
+from .ingestion import FileInput, fetch_github_snapshot, ingest_files, normalize_path, note_path, prune_source
 from .policy import (
     Project,
     require_admin,
@@ -142,6 +142,11 @@ class UploadBody(BaseModel):
     files: list[FileBody] = Field(max_length=500)
     source: str = "upload"
     refresh_brief: bool = True
+
+
+class PruneBody(BaseModel):
+    source: str = Field(pattern=r"^local:")
+    keep: list[str] = Field(min_length=1, max_length=50_000)
 
 
 class GithubBody(BaseModel):
@@ -494,6 +499,19 @@ def upload_documents(slug: str, body: UploadBody, actor: Actor = Depends(require
             refresh_brief(conn, project.id)
         scope.detail.update(report.summary())
     return report.summary() | {"skipped_files": report.skipped}
+
+
+@app.post("/api/projects/{slug}/documents/prune")
+def prune_documents(slug: str, body: PruneBody, actor: Actor = Depends(require_actor)) -> dict:
+    """After `loom ingest --prune`: forget files from that folder that no longer exist in it."""
+    with audited(actor, "ingest.prune", source=body.source) as scope, connection() as conn:
+        project = _project(conn, actor, slug, scope)
+        require_write(actor, project)
+        removed = prune_source(conn, project.id, body.source, body.keep)
+        if removed:
+            refresh_brief(conn, project.id)
+        scope.detail.update(removed=len(removed), paths=removed[:20])
+    return {"project": slug, "removed": removed}
 
 
 def _ingest_github(actor: Actor, project: Project, body: GithubBody) -> None:

@@ -250,3 +250,22 @@ def test_guard_decides_audits_and_follows_family_rules(api, monkeypatch):
     assert api.delete(f"/api/guard/rules/{rule_id}", headers=auth(other)).status_code == 404
     assert api.delete(f"/api/guard/rules/{rule_id}", headers=auth(gus)).json()["removed"] == rule["pattern"]
     assert check(mo, "shell", "terraform apply")["verdict"] == "allow"
+
+
+def test_prune_forgets_only_files_gone_from_that_folder(api, monkeypatch):
+    pat = _new_family(api, monkeypatch, "Prune Team", "Pat")
+    api.post("/api/projects", json={"name": "web", "slug": "web"}, headers=auth(pat))
+    files = [{"path": p, "content": f"# {p}\n\nSome text about {p}."} for p in ("a.md", "old/b.md", "c.md")]
+    api.post("/api/projects/web/documents", headers=auth(pat), json={"files": files, "source": "local:web"})
+    api.post("/api/projects/web/notes", headers=auth(pat), json={"title": "Keep me", "content": "A team decision."})
+
+    pruned = api.post("/api/projects/web/documents/prune", headers=auth(pat),
+                      json={"source": "local:web", "keep": ["a.md", "c.md"]})
+    assert pruned.json()["removed"] == ["old/b.md"]
+    paths = {d["path"] for d in api.get("/api/projects/web/files", headers=auth(pat)).json()["files"]}
+    assert "old/b.md" not in paths and {"a.md", "c.md"} <= paths
+    assert any(p.startswith("notes/") for p in paths)
+    assert api.post("/api/projects/web/documents/prune", headers=auth(pat),
+                    json={"source": "note", "keep": ["a.md"]}).status_code == 422
+    assert api.post("/api/projects/web/documents/prune", headers=auth(pat),
+                    json={"source": "local:web", "keep": []}).status_code == 422

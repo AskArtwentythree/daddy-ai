@@ -41,7 +41,8 @@ loom ingest .                        # or straight from GitHub: loom github owne
 ```
 
 `ingest` respects `.gitignore` and never uploads `.env` files, keys or anything that looks like a secret; those are
-stopped on your computer. Run it again whenever the code changes a lot.
+stopped on your computer. Run it again whenever the code changes a lot; `loom ingest . --prune` also makes Loom
+forget files you have deleted or moved since (notes and GitHub imports are never touched).
 
 ### 3. Invite your teammates
 
