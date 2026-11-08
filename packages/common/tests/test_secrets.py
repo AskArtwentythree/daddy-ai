@@ -1,4 +1,4 @@
-from daddy_common.secrets import is_sensitive_path, scan_text
+from loom_common.secrets import is_sensitive_path, scan_text
 
 
 def test_detects_real_credentials():

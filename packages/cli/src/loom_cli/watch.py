@@ -1,25 +1,29 @@
-"""``daddy watch``: live pushes from Daddy AI, desktop notifications, automatic skill installs."""
+"""``loom watch``: live pushes from LoomAI, desktop notifications, automatic skill installs."""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import os
 import platform
+import re
 import shlex
 import shutil
+import signal
 import subprocess
 import sys
 from collections.abc import Callable
+from pathlib import Path
 
 import websockets
 
-from daddy_common.files import from_payload
-from daddy_common.version import CLI_VERSION, is_older
+from loom_common.files import from_payload
+from loom_common.version import CLI_VERSION, is_older
 
 from . import updates
-from .client import DaddyClient, DaddyError
-from .config import Config, home_dir
+from .client import LoomClient, LoomError
+from .config import Config
 from .installer import install
 
 
@@ -31,16 +35,16 @@ def notify(title: str, message: str) -> None:
 
 
 def watch_running() -> bool:
-    return subprocess.run(["pgrep", "-f", "daddy watch$"], check=False, capture_output=True).returncode == 0
+    return subprocess.run(["pgrep", "-f", "loom watch$"], check=False, capture_output=True).returncode == 0
 
 
-def open_watch_window(daddy: str, daddy_home: str | None) -> bool:
-    """Start `daddy watch` in a new terminal window; returns False if no terminal app was found."""
-    command = [daddy, "watch"]
+def open_watch_window(loom: str, loom_home: str | None) -> bool:
+    """Start `loom watch` in a new terminal window; returns False if no terminal app was found."""
+    command = [loom, "watch"]
     if platform.system() == "Darwin":
-        script = home_dir() / "watch.command"
+        script = (Path(loom_home).expanduser() if loom_home else Path.home() / ".loom") / "watch.command"
         script.parent.mkdir(parents=True, exist_ok=True)
-        env = f"export DADDY_HOME={shlex.quote(daddy_home)}\n" if daddy_home else ""
+        env = f"export LOOM_HOME={shlex.quote(loom_home)}\n" if loom_home else ""
         script.write_text(f"#!/bin/sh\n{env}clear\nexec {shlex.join(command)}\n")
         script.chmod(0o755)
         return subprocess.run(["open", str(script)], check=False, capture_output=True).returncode == 0
@@ -50,6 +54,24 @@ def open_watch_window(daddy: str, daddy_home: str | None) -> bool:
             subprocess.Popen([terminal, flag, *command], start_new_session=True)
             return True
     return False
+
+
+def replace_legacy_watches(loom: str) -> int:
+    """`daddy watch` windows from before the rename keep running the old code: reopen each as `loom watch`."""
+    if platform.system() == "Windows":
+        return 0
+    found = subprocess.run(["pgrep", "-f", "daddy watch$"], capture_output=True, text=True, check=False).stdout
+    replaced = 0
+    for pid in map(int, found.split()):
+        if pid == os.getpid():
+            continue
+        listing = subprocess.run(["ps", "eww", "-o", "command=", "-p", str(pid)],
+                                 capture_output=True, text=True, check=False).stdout
+        home = re.search(r"\b(?:LOOM|DADDY)_HOME=(\S+)", listing)
+        with contextlib.suppress(ProcessLookupError):
+            os.kill(pid, signal.SIGTERM)
+            replaced += open_watch_window(loom, home.group(1) if home else None)
+    return replaced
 
 
 AUDIT_DETAIL_KEYS = (
@@ -82,12 +104,12 @@ class Watcher:
         self.config = config
         self.echo = echo
         self.feed = feed
-        self.client = DaddyClient(config, client_name="daddy-watch")
+        self.client = LoomClient(config, client_name="loom-watch")
 
     def _auto_accept(self, item: dict) -> None:
         try:
             accepted = self.client.post(f"/api/inbox/{item['id']}/accept")
-        except DaddyError as error:
+        except LoomError as error:
             self.echo(f"   could not open it: {error.reason}")
             return
         sender = accepted["from"]
@@ -98,7 +120,7 @@ class Watcher:
         for path in install(accepted, from_payload(accepted), self.config):
             self.echo(f"   saved → {path}")
         what = "Installed skill" if accepted["kind"] == "skill" else "Saved file"
-        notify("Daddy AI", f"{what} '{accepted['filename']}' from {sender}")
+        notify("LoomAI", f"{what} '{accepted['filename']}' from {sender}")
 
     def _show_delivery(self, item: dict) -> None:
         icon = {"message": "💬", "skill": "🧩"}.get(item["kind"], "📄")
@@ -110,13 +132,13 @@ class Watcher:
         if automatic:
             self._auto_accept(item)
         else:
-            notify("Daddy AI", f"{item['from']} sent you {item['filename']}")
-            self.echo(f"   accept with: daddy accept {item['id']}")
+            notify("LoomAI", f"{item['from']} sent you {item['filename']}")
+            self.echo(f"   accept with: loom accept {item['id']}")
 
     def _show_waiting(self) -> None:
         try:
             waiting = self.client.get("/api/inbox", all="false")
-        except DaddyError as error:
+        except LoomError as error:
             self.echo(f"Could not read your inbox: {error.reason}")
             return
         if waiting:
@@ -133,14 +155,14 @@ class Watcher:
             if latest and is_older(CLI_VERSION, latest):
                 self.echo(f"⬆ {updates.notice(latest)}")
                 if updates.due(latest, "watch"):
-                    notify("Daddy AI update", updates.notice(latest))
+                    notify("LoomAI update", updates.notice(latest))
             self._show_waiting()
         elif kind == "delivery.new":
             self._show_delivery(event["delivery"])
         elif kind in ("delivery.accepted", "delivery.declined"):
             verb = kind.split(".")[1]
             self.echo(f"↩ {event['by']} {verb} '{event['delivery']['filename']}'")
-            notify("Daddy AI", f"{event['by']} {verb} {event['delivery']['filename']}")
+            notify("LoomAI", f"{event['by']} {verb} {event['delivery']['filename']}")
         elif kind == "ingest.done":
             report = event["report"]
             self.echo(
@@ -148,12 +170,12 @@ class Watcher:
                 f"{report['indexed']} new/changed, {report['unchanged']} unchanged, "
                 f"{report['chunks']} chunks, {report['skipped']} skipped"
             )
-            notify("Daddy AI", f"{event['repo']} is ready in {event['project']}")
+            notify("LoomAI", f"{event['repo']} is ready in {event['project']}")
         elif kind == "ingest.failed":
             self.echo(f"⚠ {event['repo']} import failed: {event['reason']}")
         elif kind == "device.revoked":
             self.echo(f"⛔ This device ({event['device']}) was revoked by an admin.")
-            notify("Daddy AI", "This device was disconnected by an admin")
+            notify("LoomAI", "This device was disconnected by an admin")
             return False
         elif kind == "audit" and self.feed:
             self.echo(describe_audit(event["event"]))
@@ -165,7 +187,7 @@ class Watcher:
             await asyncio.sleep(30)
             now = await asyncio.to_thread(updates.installed_version)
             if now and now != started_with:
-                self.echo(f"⬆ Daddy was updated to {now}, restarting the watch…")
+                self.echo(f"⬆ Loom was updated to {now}, restarting the watch…")
                 os.execv(sys.argv[0], sys.argv)
 
     async def run(self) -> None:
@@ -181,14 +203,14 @@ class Watcher:
                         if not keep_going:
                             return
             except websockets.InvalidStatus as error:
-                self.echo(f"Daddy AI rejected the connection ({error.response.status_code}).")
+                self.echo(f"LoomAI rejected the connection ({error.response.status_code}).")
                 return
             except websockets.ConnectionClosedError as error:
                 if error.rcvd and error.rcvd.code == 4401:
-                    self.echo("This device's token is no longer valid. Run `daddy join` again.")
+                    self.echo("This device's token is no longer valid. Run `loom join` again.")
                     return
                 self.echo(f"Connection lost, retrying in {delay}s…")
             except OSError:
-                self.echo(f"Daddy AI unreachable at {self.config.server_url}, retrying in {delay}s…")
+                self.echo(f"LoomAI unreachable at {self.config.server_url}, retrying in {delay}s…")
             await asyncio.sleep(delay)
             delay = min(delay * 2, 30)

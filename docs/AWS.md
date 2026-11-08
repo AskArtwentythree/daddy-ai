@@ -1,6 +1,6 @@
-# Daddy AI on AWS: handover for the AWS team
+# LoomAI on AWS: handover for the AWS team
 
-Daddy AI runs fully local today. Moving to AWS means switching environment variables;
+LoomAI runs fully local today. Moving to AWS means switching environment variables;
 no code changes are needed. This page covers what we need from the AWS team, why, and
 what to send back.
 
@@ -10,7 +10,7 @@ what to send back.
 
 | Piece | Local today | On AWS |
 | --- | --- | --- |
-| Gateway (FastAPI, `daddy-server`) | laptop, port 8787 | **EC2**, behind HTTPS |
+| Gateway (FastAPI, `loom-server`) | laptop, port 8787 | **EC2**, behind HTTPS |
 | Database (PostgreSQL + pgvector) | Docker, port 5433 | **RDS for PostgreSQL** |
 | Raw files and sent artifacts | `data/blobs/` | **S3** (SSE-KMS) |
 | Embeddings | hashed n-grams | **Bedrock**: Cohere Embed Multilingual v3 |
@@ -21,7 +21,7 @@ what to send back.
 
 Teammates' laptops only talk to the gateway over HTTPS and WebSocket. They never need AWS credentials.
 
-The diagram is [`daddy-ai-aws-architecture.drawio`](daddy-ai-aws-architecture.drawio). Open it at
+The diagram is [`loom-ai-aws-architecture.drawio`](loom-ai-aws-architecture.drawio). Open it at
 [app.diagrams.net](https://app.diagrams.net) (File, Open from, Device) or with the draw.io VS Code extension.
 
 Network layout: an ALB in public subnets across 2 AZs, with the EC2 gateway and RDS in private subnets.
@@ -111,13 +111,13 @@ If they use a customer-managed KMS key instead of `aws/s3`, also add `kms:Genera
 
 | Value | Becomes |
 | --- | --- |
-| Region | `DADDY_AWS_REGION` |
-| RDS endpoint, database name, user (password via Secrets Manager or SSM) | `DADDY_DATABASE_URL=postgresql://USER:PASS@ENDPOINT:5432/DB` |
-| S3 bucket name | `DADDY_S3_BUCKET` |
-| Claude model or inference-profile IDs | `DADDY_BEDROCK_FAST_MODEL`, `DADDY_BEDROCK_ANSWER_MODEL` |
-| Rerank model ARN in our region | `DADDY_BEDROCK_RERANK_MODEL_ARN` |
-| Guardrail ID and version (optional) | `DADDY_GUARDRAIL_ID`, `DADDY_GUARDRAIL_VERSION` |
-| Public HTTPS URL of the gateway | what teammates pass to `daddy join … --server` |
+| Region | `LOOM_AWS_REGION` |
+| RDS endpoint, database name, user (password via Secrets Manager or SSM) | `LOOM_DATABASE_URL=postgresql://USER:PASS@ENDPOINT:5432/DB` |
+| S3 bucket name | `LOOM_S3_BUCKET` |
+| Claude model or inference-profile IDs | `LOOM_BEDROCK_FAST_MODEL`, `LOOM_BEDROCK_ANSWER_MODEL` |
+| Rerank model ARN in our region | `LOOM_BEDROCK_RERANK_MODEL_ARN` |
+| Guardrail ID and version (optional) | `LOOM_GUARDRAIL_ID`, `LOOM_GUARDRAIL_VERSION` |
+| Public HTTPS URL of the gateway | what teammates pass to `loom join … --server` |
 | How to reach the instance (SSH key or SSM) | for deploying |
 
 ## Switching over

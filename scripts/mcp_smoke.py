@@ -1,6 +1,6 @@
-"""Talk to `daddy mcp` over stdio exactly like Cursor does, and print each tool's answer.
+"""Talk to `loom mcp` over stdio exactly like Cursor does, and print each tool's answer.
 
-    uv run python scripts/mcp_smoke.py [--home ~/.daddy] [--workspace .] [tool-name '{"arg": 1}' ...]
+    uv run python scripts/mcp_smoke.py [--home ~/.loom] [--workspace .] [tool-name '{"arg": 1}' ...]
 
 Without tool arguments it lists the tools and calls `whoami` and `check_inbox`.
 """
@@ -19,8 +19,8 @@ from mcp.client.stdio import StdioServerParameters, stdio_client
 
 
 async def main(home: str | None, workspace: Path, calls: list[tuple[str, dict]]) -> None:
-    env = {"DADDY_HOME": home} if home else {}
-    server = StdioServerParameters(command=shutil.which("daddy") or "daddy", args=["mcp"], env=env)
+    env = {"LOOM_HOME": home} if home else {}
+    server = StdioServerParameters(command=shutil.which("loom") or "loom", args=["mcp"], env=env)
 
     async def roots(_context) -> types.ListRootsResult:
         return types.ListRootsResult(roots=[types.Root(uri=workspace.resolve().as_uri(), name=workspace.name)])
@@ -46,7 +46,7 @@ async def main(home: str | None, workspace: Path, calls: list[tuple[str, dict]])
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--home", help="DADDY_HOME of the identity to use")
+    parser.add_argument("--home", help="LOOM_HOME of the identity to use")
     parser.add_argument("--workspace", type=Path, default=Path.cwd(), help="Folder reported as the open project")
     parser.add_argument("calls", nargs="*", help="tool name followed by a JSON object of arguments")
     args = parser.parse_args()

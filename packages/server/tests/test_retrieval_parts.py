@@ -1,12 +1,12 @@
 import numpy as np
 
-from daddy_common.secrets import scan_text
-from daddy_server.chunking import chunk_document
-from daddy_server.policy import decide_share
-from daddy_server.providers.embeddings import DIM, HashEmbedder
-from daddy_server.providers.rerank import LexicalReranker
-from daddy_server.providers.text import content_terms, stem, tokenize
-from daddy_server.retrieval import build_tsquery
+from loom_common.secrets import scan_text
+from loom_server.chunking import chunk_document
+from loom_server.policy import decide_share
+from loom_server.providers.embeddings import DIM, HashEmbedder
+from loom_server.providers.rerank import LexicalReranker
+from loom_server.providers.text import content_terms, stem, tokenize
+from loom_server.retrieval import build_tsquery
 
 ALLOWED = {
     "sender_role": "member",

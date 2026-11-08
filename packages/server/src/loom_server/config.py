@@ -1,14 +1,15 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
-from daddy_common.files import MAX_DELIVERY_BYTES
+from loom_common.files import MAX_DELIVERY_BYTES
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="DADDY_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="LOOM_", env_file=".env", extra="ignore")
 
     database_url: str = "postgresql://daddy:daddy@localhost:5433/daddy"
     host: str = "127.0.0.1"
@@ -56,4 +57,16 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
-    return Settings()
+    return Settings(**_legacy_settings())
+
+
+def _legacy_settings() -> dict[str, str]:
+    """DADDY_* values (the name before LoomAI) from the environment or .env, where no LOOM_* one is set."""
+    lines = Path(".env").read_text().splitlines() if Path(".env").is_file() else []
+    pairs = [line.split("=", 1) for line in lines if "=" in line and not line.lstrip().startswith("#")]
+    values = {key.strip(): value.strip().strip("\"'") for key, value in pairs} | dict(os.environ)
+    return {
+        key.removeprefix("DADDY_").lower(): value
+        for key, value in values.items()
+        if key.startswith("DADDY_") and "LOOM_" + key.removeprefix("DADDY_") not in values
+    }

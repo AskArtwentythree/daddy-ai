@@ -14,8 +14,8 @@ from uuid import UUID
 import httpx
 import psycopg
 
-from daddy_common import ignore
-from daddy_common.secrets import scan_text
+from loom_common import ignore
+from loom_common.secrets import scan_text
 
 from .blobs import get_blob_store
 from .chunking import chunk_document, language_for

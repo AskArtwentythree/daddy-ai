@@ -1,10 +1,10 @@
 [project]
-name = "daddy-cli"
-version = "0.3.0"
-description = "Daddy AI CLI: connects a computer's AI agents to the family gateway"
+name = "loom-cli"
+version = "0.4.0"
+description = "LoomAI CLI: connects a computer's AI agents to the family gateway"
 requires-python = ">=3.12"
 dependencies = [
-    "daddy-common",
+    "loom-common",
     "typer>=0.12",
     "httpx>=0.27",
     "websockets>=13",
@@ -12,10 +12,11 @@ dependencies = [
 ]
 
 [project.scripts]
-daddy = "daddy_cli.main:app"
+loom = "loom_cli.main:app"
+daddy = "loom_cli.main:app"  # the old name, so existing installs and habits keep working
 
 [tool.uv.sources]
-daddy-common = { workspace = true }
+loom-common = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

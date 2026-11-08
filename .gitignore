@@ -9,6 +9,6 @@ data/
 dist/
 node_modules/
 .DS_Store
-# written by `daddy connect cursor --project-dir`; contain this computer's paths
+# written by `loom connect cursor --project-dir`; contain this computer's paths
 .cursor/mcp.json
 .cursor/hooks.json

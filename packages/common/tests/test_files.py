@@ -1,4 +1,4 @@
-from daddy_common.files import as_text, describe_size, from_payload, to_payload
+from loom_common.files import as_text, describe_size, from_payload, to_payload
 
 
 def test_text_and_binary_round_trip():
@@ -15,8 +15,8 @@ def test_sizes_read_naturally():
 
 
 def test_versions():
-    from daddy_common.version import cli_version_of, is_older
+    from loom_common.version import cli_version_of, is_older
 
     assert is_older("0.1", "0.2.0") and is_older("0.2.0", "0.10.0") and not is_older("0.2.0", "0.2.0")
-    assert cli_version_of("daddy-cli/0.1") == "0.1"
+    assert cli_version_of("loom-cli/0.1") == "0.1"
     assert cli_version_of("Mozilla/5.0 (Macintosh)") is None

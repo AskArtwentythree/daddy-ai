@@ -11,9 +11,9 @@ from uuid import UUID
 
 import psycopg
 
-from daddy_common.files import as_text, describe_size, to_payload
-from daddy_common.secrets import is_sensitive_path, scan_text
-from daddy_common.version import BINARY_FILES_SINCE, is_older
+from loom_common.files import as_text, describe_size, to_payload
+from loom_common.secrets import is_sensitive_path, scan_text
+from loom_common.version import BINARY_FILES_SINCE, is_older
 
 from .auth import Actor
 from .blobs import get_blob_store
@@ -210,8 +210,8 @@ def accept(conn: psycopg.Connection, actor: Actor, delivery_id: UUID, *, cli_ver
     payload = to_payload(get_blob_store().get(row["blob_key"]))
     if "content_base64" in payload and cli_version and is_older(cli_version, BINARY_FILES_SINCE):
         raise InvalidRequest(
-            f"'{row['filename']}' is a photo, PDF or other non-text file, and your daddy ({cli_version}) is too "
-            f"old to save it. Update with `daddy update` (or paste the Daddy install line again), then accept it "
+            f"'{row['filename']}' is a photo, PDF or other non-text file, and your loom ({cli_version}) is too "
+            f"old to save it. Update with `loom update` (or paste the Loom install line again), then accept it "
             "again. It stays in your inbox."
         )
     conn.execute(

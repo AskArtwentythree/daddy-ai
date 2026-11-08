@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
-from daddy_common.files import describe_size
+from loom_common.files import describe_size
 
 
 def status(me: dict, server_url: str) -> str:
     lines = [
-        f"Connected to Daddy AI at {server_url}",
+        f"Connected to LoomAI at {server_url}",
         f"You: {me['user']} <{me['email']}>{' (admin)' if me['is_admin'] else ''}",
         f"Family: {me['family']} · this device: {me['device']} · scopes: {', '.join(me['scopes'])}",
         f"Inbox: {me['inbox_waiting']} new item(s)",
@@ -36,7 +36,7 @@ def answer(result: dict) -> str:
         text += f"\n\nSources:\n{sources}"
     if result.get("standalone_query") and result["standalone_query"] != result.get("question"):
         text += f"\n\n(searched for: {result['standalone_query']})"
-    return text + "\n— Daddy AI"
+    return text + "\n— LoomAI"
 
 
 def hits(result: dict) -> str:

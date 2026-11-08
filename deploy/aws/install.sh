@@ -19,14 +19,14 @@ print("postgresql://%s:%s@%s:5432/daddy?sslmode=require"
 BOOTSTRAP_SECRET=$(secret "$BOOTSTRAP_SECRET_ARN")
 
 umask 077
-sed -e "s|^DADDY_BOOTSTRAP_SECRET=.*|DADDY_BOOTSTRAP_SECRET=$BOOTSTRAP_SECRET|" \
-    -e "s|^DADDY_OPEN_SIGNUP=.*|DADDY_OPEN_SIGNUP=$OPEN_SIGNUP|" \
-    -e "s|^DADDY_S3_BUCKET=.*|DADDY_S3_BUCKET=$BUCKET|" \
-    -e "s|^DADDY_AWS_REGION=.*|DADDY_AWS_REGION=$REGION|" \
-    -e "s|^DADDY_BEDROCK_RERANK_MODEL_ARN=.*|DADDY_BEDROCK_RERANK_MODEL_ARN=arn:aws:bedrock:$REGION::foundation-model/cohere.rerank-v3-5:0|" \
-    -e "/^DADDY_DATABASE_URL=/d" \
+sed -e "s|^LOOM_BOOTSTRAP_SECRET=.*|LOOM_BOOTSTRAP_SECRET=$BOOTSTRAP_SECRET|" \
+    -e "s|^LOOM_OPEN_SIGNUP=.*|LOOM_OPEN_SIGNUP=$OPEN_SIGNUP|" \
+    -e "s|^LOOM_S3_BUCKET=.*|LOOM_S3_BUCKET=$BUCKET|" \
+    -e "s|^LOOM_AWS_REGION=.*|LOOM_AWS_REGION=$REGION|" \
+    -e "s|^LOOM_BEDROCK_RERANK_MODEL_ARN=.*|LOOM_BEDROCK_RERANK_MODEL_ARN=arn:aws:bedrock:$REGION::foundation-model/cohere.rerank-v3-5:0|" \
+    -e "/^LOOM_DATABASE_URL=/d" \
     "$REPO_DIR/deploy/.env.aws.example" > "$REPO_DIR/.env"
-printf 'DADDY_DATABASE_URL=%s\n' "$DATABASE_URL" >> "$REPO_DIR/.env"
+printf 'LOOM_DATABASE_URL=%s\n' "$DATABASE_URL" >> "$REPO_DIR/.env"
 
 chown -R ec2-user:ec2-user "$REPO_DIR"
 sudo -u ec2-user -H bash "$REPO_DIR/deploy/setup-ec2.sh"

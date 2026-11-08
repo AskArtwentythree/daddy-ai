@@ -50,8 +50,8 @@ BUILTIN_RULES: tuple[Rule, ...] = (
     Rule("shell", r"\brm\s+(?:-\S+\s+)*(?:/\*?|~/?|\"?\$HOME\"?/?)(?:\s|$)", "deny",
          "Deletes the whole disk or home folder"),
     Rule("shell", r"\bmkfs(?:\.\w+)?\b|\bdd\b[^|;&]*\bof=/dev/", "deny", "Overwrites a disk"),
-    Rule("shell", r"\.cursor/hooks\.json|\.claude/settings(?:\.local)?\.json|\.daddy/", "deny",
-         "Touches Daddy AI's guard or this computer's Daddy token"),
+    Rule("shell", r"\.cursor/hooks\.json|\.claude/settings(?:\.local)?\.json|\.(?:loom|daddy)/", "deny",
+         "Touches LoomAI's guard or this computer's Loom token"),
     Rule("shell", r"\b(?:curl|wget)\b[^|;&]*\|\s*(?:sudo\s+)?(?:ba|z|da)?sh\b", "ask",
          "Runs a script straight from the internet"),
     Rule("shell", r"\bgit\s+push\b[^;&|]*\s(?:--force(?:-with-lease)?|-f)(?:\s|$)", "ask",
@@ -61,7 +61,7 @@ BUILTIN_RULES: tuple[Rule, ...] = (
     Rule("shell", _SEGMENT_START + r"sudo\b", "ask", "Runs with administrator rights"),
     Rule("shell", _SEGMENT_START + r"(?:printenv|env)\s*(?:$|[;&|])", "ask",
          "Prints every environment variable, secrets included"),
-    Rule("read", r"(?:^|/)\.daddy/", "deny", "This computer's Daddy token"),
+    Rule("read", r"(?:^|/)\.(?:loom|daddy)/", "deny", "This computer's Loom token"),
     Rule("mcp", r"\.(?:delete|drop|destroy|remove|purge)", "ask", "Deletes something through a connected tool"),
 )
 
@@ -120,7 +120,7 @@ def hard_check(kind: Kind, target: str, content: str = "") -> Decision | None:
     elif kind == "read":
         if is_sensitive_path(target):
             name = PurePosixPath(target).name
-            return Decision("deny", f"{name} holds credentials; Daddy keeps it away from the model", "credential")
+            return Decision("deny", f"{name} holds credentials; Loom keeps it away from the model", "credential")
         if not is_test_path(target) and (findings := scan_text(content)):
             return Decision("deny", f"The file contains a secret ({findings[0].describe()})", "secret")
     elif kind == "mcp" and (findings := scan_text(content)):

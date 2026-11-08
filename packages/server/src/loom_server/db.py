@@ -15,7 +15,7 @@ _pool: ConnectionPool | None = None
 
 
 def apply_schema(database_url: str) -> None:
-    schema = files("daddy_server").joinpath("schema.sql").read_text()
+    schema = files("loom_server").joinpath("schema.sql").read_text()
     with psycopg.connect(database_url, autocommit=True) as conn:
         conn.execute(schema)
 

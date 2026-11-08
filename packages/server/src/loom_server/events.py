@@ -38,7 +38,7 @@ class EventBus:
                 queues.discard(queue)
 
     def online_devices(self) -> set[UUID]:
-        """Devices holding a live connection right now (``daddy watch`` or the dashboard)."""
+        """Devices holding a live connection right now (``loom watch`` or the dashboard)."""
         return set(self._queue_device.values())
 
     def to_user(self, user_id: UUID, event: dict[str, Any]) -> None:

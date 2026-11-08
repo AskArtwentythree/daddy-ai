@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: "2010-09-09"
 Description: >-
-  Daddy AI, full layout from docs/daddy-ai-aws-architecture.drawio: CloudFront (HTTPS) -> ALB in public
+  LoomAI, full layout from docs/loom-ai-aws-architecture.drawio: CloudFront (HTTPS) -> ALB in public
   subnets -> EC2 in a private subnet -> RDS PostgreSQL 17 + S3 (SSE-KMS) + Bedrock. Deploy with deploy/aws/deploy.sh.
 
 Parameters:

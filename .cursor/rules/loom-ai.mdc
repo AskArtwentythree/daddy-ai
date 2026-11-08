@@ -1,8 +1,8 @@
 ---
-description: Daddy AI, the team's shared project brain
+description: LoomAI, the team's shared project brain
 alwaysApply: true
 ---
-This project is connected to Daddy AI (MCP server "daddy").
+This project is connected to LoomAI (MCP server "loom").
 - For questions about this project's code, decisions, docs or teammates, call `ask_project`
   and cite its sources. If it says "Not in project knowledge.", say so instead of guessing.
 - To share a file, skill or message with a teammate, call `send_to_teammate`.

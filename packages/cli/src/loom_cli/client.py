@@ -6,12 +6,12 @@ from urllib.parse import quote
 
 import httpx
 
-from daddy_common.version import CLI_VERSION, is_older
+from loom_common.version import CLI_VERSION, is_older
 
 from .config import Config
 
 
-class DaddyError(Exception):
+class LoomError(Exception):
     def __init__(self, status: int, reason: str, kind: str | None = None):
         super().__init__(reason)
         self.status = status
@@ -23,7 +23,7 @@ class DaddyError(Exception):
         return self.kind == "denied"
 
 
-class DaddyClient:
+class LoomClient:
     def __init__(
         self,
         config: Config,
@@ -31,11 +31,11 @@ class DaddyClient:
         timeout: float = 120,
         on_update: Callable[[str], None] | None = None,
     ):
-        headers = {"User-Agent": f"daddy-cli/{CLI_VERSION}"}
+        headers = {"User-Agent": f"loom-cli/{CLI_VERSION}"}
         if config.token:
             headers["Authorization"] = f"Bearer {config.token}"
         if client_name:
-            headers["X-Daddy-Client"] = client_name
+            headers["X-Loom-Client"] = client_name
         self.config = config
         self.client_name = client_name
         self.on_update = on_update
@@ -46,10 +46,10 @@ class DaddyClient:
         try:
             response = self._http.request(method, path, **kwargs)
         except httpx.ConnectError as error:
-            raise DaddyError(0, f"Cannot reach Daddy AI at {self.config.server_url}") from error
+            raise LoomError(0, f"Cannot reach LoomAI at {self.config.server_url}") from error
         except httpx.TimeoutException as error:
-            raise DaddyError(0, f"Daddy AI at {self.config.server_url} took too long to answer") from error
-        latest = response.headers.get("X-Daddy-Latest-Cli")
+            raise LoomError(0, f"LoomAI at {self.config.server_url} took too long to answer") from error
+        latest = response.headers.get("X-Loom-Latest-Cli")
         if latest:
             self.latest_cli = latest
             if self.on_update and is_older(CLI_VERSION, latest):
@@ -60,7 +60,7 @@ class DaddyClient:
             except ValueError:
                 body = {}
             reason = body.get("reason") or body.get("detail") or response.text or response.reason_phrase
-            raise DaddyError(response.status_code, str(reason), body.get("error"))
+            raise LoomError(response.status_code, str(reason), body.get("error"))
         return response.json() if response.content else None
 
     def get(self, path: str, **params: Any) -> Any:
@@ -87,4 +87,4 @@ class DaddyClient:
         if len(projects) == 1:
             return projects[0]["slug"]
         names = ", ".join(p["slug"] for p in projects) or "none yet"
-        raise DaddyError(400, f"Which project? You are in: {names}")
+        raise LoomError(400, f"Which project? You are in: {names}")

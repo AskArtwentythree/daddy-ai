@@ -9,7 +9,7 @@ from fastapi import Header, HTTPException, Request
 
 from .db import connection
 
-TOKEN_PREFIX = "dad_"
+TOKEN_PREFIX = "loom_"
 INVITE_PREFIX = "inv_"
 
 
@@ -77,11 +77,12 @@ def actor_for_token(token: str, client: str | None) -> Actor | None:
 def require_actor(
     request: Request,
     authorization: str | None = Header(default=None),
-    x_daddy_client: str | None = Header(default=None),
+    x_loom_client: str | None = Header(default=None),
+    x_daddy_client: str | None = Header(default=None),  # clients from before the rename
 ) -> Actor:
     if not authorization or not authorization.lower().startswith("bearer "):
         raise HTTPException(status_code=401, detail="Missing bearer token")
-    actor = actor_for_token(authorization.split(" ", 1)[1].strip(), x_daddy_client)
+    actor = actor_for_token(authorization.split(" ", 1)[1].strip(), x_loom_client or x_daddy_client)
     if actor is None:
         raise HTTPException(status_code=401, detail="Unknown or revoked device token")
     request.state.actor = actor

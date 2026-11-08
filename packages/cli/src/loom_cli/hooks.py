@@ -16,10 +16,10 @@ import sys
 import time
 from pathlib import Path
 
-from daddy_common import guard
-from daddy_common.secrets import scan_text
+from loom_common import guard
+from loom_common.secrets import scan_text
 
-from .client import DaddyClient, DaddyError
+from .client import LoomClient, LoomError
 from .config import Config, home_dir, load_config
 
 RULES_TTL_SECONDS = 300
@@ -53,8 +53,8 @@ def _report(event: str, decision: str, reason: str | None, detail: dict, client_
     config = load_config()
     if not config.token:
         return
-    with contextlib.suppress(DaddyError):
-        DaddyClient(config, client_name=client_name, timeout=3).post(
+    with contextlib.suppress(LoomError):
+        LoomClient(config, client_name=client_name, timeout=3).post(
             "/api/agent-events",
             {"event": event, "decision": decision, "reason": reason, "detail": detail},
         )
@@ -73,7 +73,7 @@ def prompt_check() -> int:
             print(json.dumps({"continue": True}))
         return 0
     reason = "; ".join(f.describe() for f in findings[:3])
-    message = f"Daddy AI blocked this prompt because it contains a secret ({reason}). Remove it and retry."
+    message = f"LoomAI blocked this prompt because it contains a secret ({reason}). Remove it and retry."
     _report(
         "prompt_blocked",
         "deny",
@@ -98,8 +98,8 @@ def _family_rules(config: Config) -> tuple[guard.Rule, ...]:
     except (OSError, ValueError):
         cached = {}
     if config.token and time.time() - cached.get("at", 0) > RULES_TTL_SECONDS:
-        with contextlib.suppress(DaddyError):
-            family = DaddyClient(config, client_name="guard", timeout=3).get("/api/guard/rules")["family"]
+        with contextlib.suppress(LoomError):
+            family = LoomClient(config, client_name="guard", timeout=3).get("/api/guard/rules")["family"]
             cached = {"at": time.time(), "family": family}
             cache.parent.mkdir(parents=True, exist_ok=True)
             cache.write_text(json.dumps(cached))
@@ -115,8 +115,8 @@ def _action(event: dict) -> tuple[guard.Kind, str, str, str] | None:
         return "read", event.get("file_path") or "", event.get("content") or "", "cursor-hook"
     if name == "beforeMCPExecution":
         server = event.get("mcp_server_name") or "unknown"
-        if server == "daddy" or server.endswith("-daddy"):
-            return None  # Daddy's own tools are decided and audited by the gateway itself
+        if server in ("loom", "daddy") or server.endswith(("-loom", "-daddy")):
+            return None  # Loom's own tools are decided and audited by the gateway itself
         return "mcp", f"{server}.{event.get('tool_name') or ''}", event.get("tool_input") or "", "cursor-hook"
     if name == "PreToolUse":
         tool, args = event.get("tool_name") or "", event.get("tool_input") or {}
@@ -130,7 +130,7 @@ def _action(event: dict) -> tuple[guard.Kind, str, str, str] | None:
             return "read", str(path), content, "claude-hook"
         if tool.startswith("mcp__"):
             _, server, tool_name = (tool.split("__", 2) + ["", ""])[:3]
-            if server == "daddy":
+            if server in ("loom", "daddy"):
                 return None
             return "mcp", f"{server}.{tool_name}", json.dumps(args), "claude-hook"
     return None
@@ -150,8 +150,8 @@ def _decide(kind: guard.Kind, target: str, content: str, cwd: str | None, agent:
             _report("guard_blocked", "deny", decision.reason, {"kind": kind, "target": shown}, agent)
         return decision
     if config.token:
-        with contextlib.suppress(DaddyError, KeyError, ValueError):
-            answer = DaddyClient(config, client_name=agent, timeout=3).post(
+        with contextlib.suppress(LoomError, KeyError, ValueError):
+            answer = LoomClient(config, client_name=agent, timeout=3).post(
                 "/api/guard", {"kind": kind, "target": target[:4000], "cwd": cwd}
             )
             return guard.Decision(answer["verdict"], answer.get("reason"), answer.get("rule"))
@@ -167,7 +167,7 @@ def _answer(event: dict, kind: guard.Kind, decision: guard.Decision) -> dict:
             "hookSpecificOutput": {
                 "hookEventName": "PreToolUse",
                 "permissionDecision": verdict,
-                "permissionDecisionReason": f"Daddy AI: {decision.reason}",
+                "permissionDecisionReason": f"LoomAI: {decision.reason}",
             }
         }
     if kind == "read" and verdict == "ask":
@@ -178,14 +178,14 @@ def _answer(event: dict, kind: guard.Kind, decision: guard.Decision) -> dict:
     if verdict == "ask":
         return {
             "permission": "ask",
-            "user_message": f"Daddy AI wants your OK: {decision.reason}.",
-            "agent_message": f"Daddy AI's guard needs the user's approval for this {what}: {decision.reason}.",
+            "user_message": f"LoomAI wants your OK: {decision.reason}.",
+            "agent_message": f"LoomAI's guard needs the user's approval for this {what}: {decision.reason}.",
         }
     return {
         "permission": "deny",
-        "user_message": f"Daddy AI blocked this {what}: {decision.reason}.",
+        "user_message": f"LoomAI blocked this {what}: {decision.reason}.",
         "agent_message": (
-            f"Daddy AI's guard blocked this {what}: {decision.reason}. This is the team's policy; don't try to work "
+            f"LoomAI's guard blocked this {what}: {decision.reason}. This is the team's policy; don't try to work "
             "around it. If it's really needed, tell the user why and let them decide."
         ),
     }
@@ -201,7 +201,7 @@ def guard_check() -> int:
         else:
             kind, target, content, agent = action
             answer = _answer(event, kind, _decide(kind, target, content, event.get("cwd"), agent))
-    except Exception:  # a bug here must not freeze the user's agent; the gateway still guards Daddy's tools
+    except Exception:  # a bug here must not freeze the user's agent; the gateway still guards Loom's tools
         answer = {} if event.get("hook_event_name") == "PreToolUse" else {"permission": "allow"}
     print(json.dumps(answer))
     return 0
@@ -216,8 +216,9 @@ def audit() -> int:
             return 0
         tool = event.get("tool_name") or ""
         server = event.get("mcp_server_name") or ""
-        own_call = "daddy" in server.lower() or (not server and any(tool.endswith(t) for t in OWN_TOOLS))
-        if not own_call:  # Daddy's own calls are audited server-side
+        ours = any(own in server.lower() for own in ("loom", "daddy"))
+        own_call = ours or (not server and any(tool.endswith(t) for t in OWN_TOOLS))
+        if not own_call:  # Loom's own calls are audited server-side
             keys = ("mcp_server_name", "tool_name", "duration", "status", "loop_count")
             detail = {k: event[k] for k in keys if k in event}
             detail["conversation"] = event.get("conversation_id")

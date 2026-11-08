@@ -2,13 +2,13 @@ import json
 
 import pytest
 
-from daddy_cli import connect, watch
-from daddy_cli.config import Config
-from daddy_cli.hooks import _snake
-from daddy_cli.installer import install
-from daddy_common.version import CLI_VERSION
+from loom_cli import connect, watch
+from loom_cli.config import Config
+from loom_cli.hooks import _snake
+from loom_cli.installer import install
+from loom_common.version import CLI_VERSION
 
-STAMP = {"DADDY_CLI_VERSION": CLI_VERSION}
+STAMP = {"LOOM_CLI_VERSION": CLI_VERSION}
 
 
 def _config(tmp_path) -> Config:
@@ -80,8 +80,8 @@ def test_hook_event_names_become_snake_case():
 
 def test_connect_claude_desktop_keeps_other_servers(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy"))
-    monkeypatch.setattr(connect, "executable", lambda: "/opt/daddy")
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom"))
+    monkeypatch.setattr(connect, "executable", lambda: "/opt/loom")
     path = connect.claude_desktop_config()
     path.parent.mkdir(parents=True)
     path.write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}, "theme": "dark"}))
@@ -93,17 +93,17 @@ def test_connect_claude_desktop_keeps_other_servers(tmp_path, monkeypatch):
 
     config = json.loads(path.read_text())
     assert config["theme"] == "dark"
-    daddy = {"command": "/opt/daddy", "args": ["mcp"], "env": STAMP}
-    assert config["mcpServers"] == {"other": {"command": "x"}, "daddy": daddy}
+    loom = {"command": "/opt/loom", "args": ["mcp"], "env": STAMP}
+    assert config["mcpServers"] == {"other": {"command": "x"}, "loom": loom}
     assert connect.connected_agents() == ["the Claude app"]
-    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy-other"))
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom-other"))
     assert connect.connected_agents() == []
 
 
 def test_connect_cursor_merges_existing_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy"))
-    monkeypatch.setattr(connect, "executable", lambda: "/opt/daddy")
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom"))
+    monkeypatch.setattr(connect, "executable", lambda: "/opt/loom")
     cursor = tmp_path / ".cursor"
     cursor.mkdir()
     (cursor / "mcp.json").write_text(json.dumps({"mcpServers": {"other": {"command": "x"}}}))
@@ -114,30 +114,30 @@ def test_connect_cursor_merges_existing_config(tmp_path, monkeypatch):
 
     servers = json.loads((cursor / "mcp.json").read_text())["mcpServers"]
     assert servers["other"] == {"command": "x"}
-    assert servers["daddy"] == {"command": "/opt/daddy", "args": ["mcp"], "env": STAMP}
+    assert servers["loom"] == {"command": "/opt/loom", "args": ["mcp"], "env": STAMP}
     hooks = json.loads((cursor / "hooks.json").read_text())["hooks"]
-    assert [h["command"] for h in hooks["stop"]] == ["mine", "/opt/daddy hook audit"]
-    assert hooks["beforeSubmitPrompt"] == [{"command": "/opt/daddy hook prompt-check"}]
+    assert [h["command"] for h in hooks["stop"]] == ["mine", "/opt/loom hook audit"]
+    assert hooks["beforeSubmitPrompt"] == [{"command": "/opt/loom hook prompt-check"}]
 
 
 def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
     from typer.testing import CliRunner
 
-    from daddy_cli import main
-    from daddy_cli.client import DaddyError
-    from daddy_cli.config import load_config, save_config
+    from loom_cli import main
+    from loom_cli.client import LoomError
+    from loom_cli.config import load_config, save_config
 
-    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy"))
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom"))
     save_config(Config(token="dad_old", user="Askar", family="acmhack", default_project="acmhack"))
     alive = {"ok": True}
 
     def get(self, path):
         if not alive["ok"]:
-            raise DaddyError(401, "revoked")
+            raise LoomError(401, "revoked")
         return {"family": "acmhack", "user": "Askar"}
 
-    monkeypatch.setattr(main.DaddyClient, "get", get)
-    monkeypatch.setattr(main.DaddyClient, "post", lambda self, path, body: {
+    monkeypatch.setattr(main.LoomClient, "get", get)
+    monkeypatch.setattr(main.LoomClient, "post", lambda self, path, body: {
         "token": "dad_new", "user": "Askar", "family": "Test"})
     runner = CliRunner()
 
@@ -149,7 +149,7 @@ def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
     assert switched.exit_code == 0, switched.output
     config = load_config()
     assert (config.token, config.family, config.default_project) == ("dad_new", "Test", None)
-    backups = list((tmp_path / ".daddy").glob("config.backup-*.json"))
+    backups = list((tmp_path / ".loom").glob("config.backup-*.json"))
     assert len(backups) == 1 and json.loads(backups[0].read_text())["token"] == "dad_old"
 
     alive["ok"] = False
@@ -175,22 +175,22 @@ def test_version_numbers_agree():
 
 
 def test_update_notices_do_not_nag(tmp_path, monkeypatch):
-    from daddy_cli import updates
+    from loom_cli import updates
 
-    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy"))
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom"))
     assert updates.due("9.0.0", "cli") is True
     assert updates.due("9.0.0", "cli") is False
     assert updates.due("9.0.0", "agent") is True
     assert updates.due("9.1.0", "cli") is True
-    assert "daddy update" in updates.notice("9.1.0")
+    assert "loom update" in updates.notice("9.1.0")
 
 
 def test_already_connected_ignores_the_version_stamp(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy"))
-    monkeypatch.setattr(connect, "executable", lambda: "/opt/daddy")
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom"))
+    monkeypatch.setattr(connect, "executable", lambda: "/opt/loom")
     cursor = tmp_path / ".cursor" / "mcp.json"
     cursor.parent.mkdir()
-    old = {"command": "/opt/daddy", "args": ["mcp"], "env": {"DADDY_CLI_VERSION": "0.0.1"}}
-    cursor.write_text(json.dumps({"mcpServers": {"daddy": old}}))
+    old = {"command": "/opt/loom", "args": ["mcp"], "env": {"LOOM_CLI_VERSION": "0.0.1"}}
+    cursor.write_text(json.dumps({"mcpServers": {"loom": old}}))
     assert connect.connected_agents() == ["Cursor"]

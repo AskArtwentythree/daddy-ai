@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Installs Daddy AI on an Amazon Linux 2023 EC2 instance and runs it as a systemd service.
+# Installs LoomAI on an Amazon Linux 2023 EC2 instance and runs it as a systemd service.
 # Run from the repo root on the instance:  bash deploy/setup-ec2.sh   (safe to re-run after changes)
 set -euo pipefail
 
@@ -21,8 +21,8 @@ if ! command -v uv >/dev/null 2>&1; then
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-echo "Installing Daddy AI..."
-uv sync --frozen --no-dev --package daddy-server
+echo "Installing LoomAI..."
+uv sync --frozen --no-dev --package loom-server
 
 echo "Installing the systemd service..."
 sed -e "s|__USER__|$(id -un)|g" -e "s|__REPO_DIR__|$REPO_DIR|g" deploy/daddy-server.service \
@@ -34,7 +34,7 @@ sudo systemctl restart daddy-server
 echo "Waiting for the gateway..."
 for _ in $(seq 1 30); do
   if health=$(curl -fsS http://127.0.0.1:8787/api/health 2>/dev/null); then
-    echo "Daddy AI is up: $health"
+    echo "LoomAI is up: $health"
     echo "Next: check https://<your domain>/api/health from your laptop, then send Askar the URL"
     echo "and the bootstrap secret privately (see deploy/README.md, step 5)."
     exit 0

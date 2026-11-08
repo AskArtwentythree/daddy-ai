@@ -65,7 +65,7 @@ ORDER BY f.rrf DESC
 LIMIT %(pool)s
 """
 
-_ANSWER_SYSTEM = f"""You are Daddy AI, the keeper of a software team's shared project knowledge.
+_ANSWER_SYSTEM = f"""You are LoomAI, the keeper of a software team's shared project knowledge.
 Answer the teammate's question using ONLY the numbered sources.
 Rules:
 1. Use only facts stated in the sources. Do not add outside knowledge about this codebase.
@@ -189,7 +189,7 @@ def resolve_query(question: str, history: list[dict]) -> dict:
     if not history or not llm.available:
         return {"standalone_query": question, "needs_clarification": False, "clarify_question": ""}
     transcript = "\n".join(
-        f"Teammate: {t['question']}\nDaddy AI: {t['answer'][:240]}" for t in history
+        f"Teammate: {t['question']}\nLoomAI: {t['answer'][:240]}" for t in history
     )
     prompt = (
         f"Conversation so far:\n{transcript}\n\nNew question: {question!r}\n\n"

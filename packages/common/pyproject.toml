@@ -1,7 +1,7 @@
 [project]
-name = "daddy-common"
+name = "loom-common"
 version = "0.1.0"
-description = "Shared code for Daddy AI server and CLI"
+description = "Shared code for LoomAI server and CLI"
 requires-python = ">=3.12"
 dependencies = []
 

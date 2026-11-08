@@ -1,12 +1,12 @@
 [Unit]
-Description=Daddy AI gateway
+Description=LoomAI gateway
 After=network-online.target
 Wants=network-online.target
 
 [Service]
 User=__USER__
 WorkingDirectory=__REPO_DIR__
-ExecStart=__REPO_DIR__/.venv/bin/daddy-server
+ExecStart=__REPO_DIR__/.venv/bin/loom-server
 Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=3

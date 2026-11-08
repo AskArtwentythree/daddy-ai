@@ -1,4 +1,4 @@
-"""The `daddy` command's version, shared so the server (deployed from the same repo) knows the latest one.
+"""The `loom` command's version, shared so the server (deployed from the same repo) knows the latest one.
 
 Bump CLI_VERSION (and packages/cli/pyproject.toml) with every change people should install.
 """
@@ -7,10 +7,10 @@ from __future__ import annotations
 
 import re
 
-CLI_VERSION = "0.3.0"
+CLI_VERSION = "0.4.0"
 BINARY_FILES_SINCE = "0.2.0"
 
-_CLI_AGENT = re.compile(r"daddy-cli/(\d+(?:\.\d+)*)")
+_CLI_AGENT = re.compile(r"(?:loom|daddy)-cli/(\d+(?:\.\d+)*)")  # daddy-cli: before the rename
 
 
 def parse(version: str) -> tuple[int, ...]:
@@ -22,6 +22,6 @@ def is_older(version: str, than: str) -> bool:
 
 
 def cli_version_of(user_agent: str | None) -> str | None:
-    """The version in a ``daddy-cli/<version>`` User-Agent, or None for browsers and other clients."""
+    """The version in a ``loom-cli/<version>`` User-Agent, or None for browsers and other clients."""
     match = _CLI_AGENT.search(user_agent or "")
     return match.group(1) if match else None

@@ -37,9 +37,9 @@ URL=$(output Url) BUCKET=$(output BucketName) DB_ENDPOINT=$(output DbEndpoint)
 DB_SECRET_ARN=$(output DbSecretArn) BOOTSTRAP_SECRET_ARN=$(output BootstrapSecretArn) INSTANCE=$(output InstanceId)
 
 echo "2/4  Uploading the code to s3://$BUCKET/releases/..."
-ARCHIVE=$(mktemp -t daddy-ai).tar.gz
+ARCHIVE=$(mktemp -t loom-ai).tar.gz
 git archive --format=tar.gz -o "$ARCHIVE" HEAD
-aws s3 cp "$ARCHIVE" "s3://$BUCKET/releases/daddy-ai.tar.gz" --only-show-errors
+aws s3 cp "$ARCHIVE" "s3://$BUCKET/releases/loom-ai.tar.gz" --only-show-errors
 rm -f "$ARCHIVE"
 
 echo "3/4  Installing on $INSTANCE through SSM (no SSH needed)..."
@@ -49,9 +49,9 @@ for _ in $(seq 1 60); do
   sleep 5
 done
 APP=/home/ec2-user/daddy-ai
-CMD="set -e; aws s3 cp s3://$BUCKET/releases/daddy-ai.tar.gz /tmp/daddy-ai.tar.gz --region $AWS_REGION --only-show-errors; mkdir -p $APP; tar -xzf /tmp/daddy-ai.tar.gz -C $APP; bash $APP/deploy/aws/install.sh $AWS_REGION $BUCKET $DB_ENDPOINT $DB_SECRET_ARN $BOOTSTRAP_SECRET_ARN $OPEN_SIGNUP"
+CMD="set -e; aws s3 cp s3://$BUCKET/releases/loom-ai.tar.gz /tmp/loom-ai.tar.gz --region $AWS_REGION --only-show-errors; mkdir -p $APP; tar -xzf /tmp/loom-ai.tar.gz -C $APP; bash $APP/deploy/aws/install.sh $AWS_REGION $BUCKET $DB_ENDPOINT $DB_SECRET_ARN $BOOTSTRAP_SECRET_ARN $OPEN_SIGNUP"
 COMMAND_ID=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript \
-  --comment "Install Daddy AI" --parameters "{\"commands\":[\"$CMD\"]}" \
+  --comment "Install LoomAI" --parameters "{\"commands\":[\"$CMD\"]}" \
   --query Command.CommandId --output text)
 STATUS=Pending
 while [[ $STATUS == Pending || $STATUS == InProgress || $STATUS == Delayed ]]; do
@@ -66,11 +66,11 @@ aws ssm get-command-invocation --command-id "$COMMAND_ID" --instance-id "$INSTAN
 echo "4/4  Checking $URL/api/health ..."
 for _ in $(seq 1 30); do
   if health=$(curl -fsS "$URL/api/health" 2>/dev/null); then
-    echo "Daddy AI is live at $URL : $health"
+    echo "LoomAI is live at $URL : $health"
     echo
-    [[ $OPEN_SIGNUP == true ]] && echo "Open sign-up is on: anyone can start a family with  daddy init --server $URL"
+    [[ $OPEN_SIGNUP == true ]] && echo "Open sign-up is on: anyone can start a family with  loom init --server $URL"
     echo "Create the family (prints nothing secret):"
-    echo "  uv run daddy init --server $URL --secret \"\$(aws secretsmanager get-secret-value --region $AWS_REGION --secret-id $BOOTSTRAP_SECRET_ARN --query SecretString --output text)\""
+    echo "  uv run loom init --server $URL --secret \"\$(aws secretsmanager get-secret-value --region $AWS_REGION --secret-id $BOOTSTRAP_SECRET_ARN --query SecretString --output text)\""
     exit 0
   fi
   sleep 10

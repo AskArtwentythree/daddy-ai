@@ -20,18 +20,18 @@ import anyio
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.shared.exceptions import MCPDeprecationWarning
 
-from daddy_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
-from daddy_common.secrets import is_sensitive_path, scan_text
-from daddy_common.version import CLI_VERSION, is_older
+from loom_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
+from loom_common.secrets import is_sensitive_path, scan_text
+from loom_common.version import CLI_VERSION, is_older
 
 from . import render, updates
-from .client import DaddyClient, DaddyError
+from .client import LoomClient, LoomError
 from .config import load_config, save_config
 from .installer import install
 
 SESSION_KEY = uuid4().hex
 
-INSTRUCTIONS = """Daddy AI is the central brain of the user's team (their "family").
+INSTRUCTIONS = """LoomAI is the central brain of the user's team (their "family").
 It holds every project's code, docs, skills and notes, and delivers files between teammates.
 - For questions about the team's projects, files, decisions or teammates, call ask_project
   (or search_project for raw passages) and cite the sources it returns.
@@ -39,7 +39,7 @@ It holds every project's code, docs, skills and notes, and delivers files betwee
 - At the start of a conversation, call check_inbox and mention any new items.
 - When the user asks to remember or save something for the team, call save_note."""
 
-mcp = MCPServer(name="Daddy AI", instructions=INSTRUCTIONS)
+mcp = MCPServer(name="LoomAI", instructions=INSTRUCTIONS)
 
 
 def _client_name(ctx: Context) -> str:
@@ -50,11 +50,11 @@ def _client_name(ctx: Context) -> str:
         return "mcp-client"
 
 
-def _client(ctx: Context) -> DaddyClient:
-    return DaddyClient(load_config(), client_name=_client_name(ctx))
+def _client(ctx: Context) -> LoomClient:
+    return LoomClient(load_config(), client_name=_client_name(ctx))
 
 
-def _with_update_note(client: DaddyClient, text: str) -> str:
+def _with_update_note(client: LoomClient, text: str) -> str:
     latest = client.latest_cli
     if latest and is_older(CLI_VERSION, latest) and updates.due(latest, "agent"):
         return f"{text}\n\nTell the user: {updates.notice(latest)}"
@@ -62,7 +62,7 @@ def _with_update_note(client: DaddyClient, text: str) -> str:
 
 
 async def _workspace_root(ctx: Context) -> Path:
-    configured = os.environ.get("DADDY_WORKSPACE", "")
+    configured = os.environ.get("LOOM_WORKSPACE", "")
     if configured and "${" not in configured:
         return Path(configured).expanduser()
     try:
@@ -83,25 +83,25 @@ async def _api[T](call: Callable[[], T]) -> T:
     return await anyio.to_thread.run_sync(call)
 
 
-def _failure(error: DaddyError) -> str:
-    prefix = "Daddy AI refused" if error.denied else "Daddy AI error"
+def _failure(error: LoomError) -> str:
+    prefix = "LoomAI refused" if error.denied else "LoomAI error"
     return f"{prefix}: {error.reason}"
 
 
 @mcp.tool()
 async def whoami(ctx: Context) -> str:
-    """Show whether this agent is connected to Daddy AI, as whom, and which projects it can see."""
+    """Show whether this agent is connected to LoomAI, as whom, and which projects it can see."""
     client = _client(ctx)
     try:
         status = render.status(await _api(lambda: client.get("/api/me")), client.config.server_url)
         return _with_update_note(client, status)
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
 @mcp.tool()
 async def ask_project(question: str, ctx: Context, project: str | None = None, path_prefix: str | None = None) -> str:
-    """Ask Daddy AI a question about the team's projects and get a cited answer.
+    """Ask LoomAI a question about the team's projects and get a cited answer.
 
     Answers come only from indexed project knowledge (code, docs, skills, notes); when nothing
     relevant exists it says "Not in project knowledge." instead of guessing.
@@ -122,7 +122,7 @@ async def ask_project(question: str, ctx: Context, project: str | None = None, p
             )
         )
         return render.answer(result | {"question": question})
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
@@ -136,7 +136,7 @@ async def search_project(query: str, ctx: Context, project: str | None = None, p
                 lambda: client.post("/api/search", {"query": query, "project": project, "path_prefix": path_prefix})
             )
         )
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
@@ -147,7 +147,7 @@ async def project_brief(ctx: Context, project: str | None = None) -> str:
     try:
         slug = await _api(lambda: client.resolve_project(project))
         return (await _api(lambda: client.get(f"/api/projects/{slug}/brief")))["brief"]
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
@@ -158,7 +158,7 @@ async def get_project_file(path: str, ctx: Context, project: str | None = None) 
     try:
         slug = await _api(lambda: client.resolve_project(project))
         return (await _api(lambda: client.get(f"/api/projects/{slug}/file", path=path)))["content"]
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
@@ -206,7 +206,7 @@ async def send_to_teammate(
     findings = scan_text(payload.get("content", "")) + scan_text(note)
     if is_sensitive_path(filename) or findings:
         reason = "credential file" if is_sensitive_path(filename) else "; ".join(f.describe() for f in findings[:3])
-        with contextlib.suppress(DaddyError):
+        with contextlib.suppress(LoomError):
             await _api(
                 lambda: client.post(
                     "/api/agent-events",
@@ -239,7 +239,7 @@ async def send_to_teammate(
             f"Sent {item['kind']} '{item['filename']}' to {result['recipient']}'s inbox "
             f"(project {item['project']}). They are notified and can accept it."
         )
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
@@ -249,7 +249,7 @@ async def check_inbox(ctx: Context) -> str:
     client = _client(ctx)
     try:
         return _with_update_note(client, render.inbox(await _api(lambda: client.get("/api/inbox"))))
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
@@ -259,13 +259,13 @@ async def accept_delivery(
 ) -> str:
     """Accept an inbox item and install it on this computer.
 
-    destination: "default" puts skills into the agent skills folders and files into the Daddy
+    destination: "default" puts skills into the agent skills folders and files into the Loom
     inbox folder; "workspace" puts files into the currently open project.
     """
     client = _client(ctx)
     try:
         item = await _api(lambda: client.post(f"/api/inbox/{delivery_id}/accept"))
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
     project_dir = await _workspace_root(ctx) if destination == "workspace" else None
     written = install(item, from_payload(item), client.config, project_dir)
@@ -282,7 +282,7 @@ async def decline_delivery(delivery_id: str, ctx: Context) -> str:
     try:
         item = await _api(lambda: client.post(f"/api/inbox/{delivery_id}/decline"))
         return f"Declined '{item['filename']}' from {item['from']}."
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
@@ -294,7 +294,7 @@ async def save_note(title: str, content: str, ctx: Context, project: str | None 
         slug = await _api(lambda: client.resolve_project(project))
         result = await _api(lambda: client.post(f"/api/projects/{slug}/notes", {"title": title, "content": content}))
         return f"Saved to {slug} knowledge as {result['path']}; every project member can now find it."
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
 
 
@@ -304,7 +304,7 @@ async def change_my_name(name: str, ctx: Context) -> str:
     client = _client(ctx)
     try:
         result = await _api(lambda: client.post("/api/me/name", {"display_name": name}))
-    except DaddyError as error:
+    except LoomError as error:
         return _failure(error)
     config = load_config()
     config.user = result["user"]

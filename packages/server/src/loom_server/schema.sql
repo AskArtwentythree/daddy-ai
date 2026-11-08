@@ -55,7 +55,7 @@ ALTER TABLE invites ALTER COLUMN display_name DROP NOT NULL;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS max_uses integer NOT NULL DEFAULT 1;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS uses integer NOT NULL DEFAULT 0;
 
--- A family's own rules for agent actions, checked before the built-in ones in daddy_common.guard.
+-- A family's own rules for agent actions, checked before the built-in ones in loom_common.guard.
 CREATE TABLE IF NOT EXISTS guard_rules (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     workspace_id  uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,

@@ -1,4 +1,4 @@
-const TOKEN_KEY = "daddy.dashboard.token";
+const TOKEN_KEY = "loom.dashboard.token";
 const MAX_EVENTS = 250;
 
 const AGENTS = {
@@ -6,6 +6,8 @@ const AGENTS = {
   cursor: "Cursor",
   "claude-code": "Claude Code",
   "claude-ai": "Claude",
+  "loom-cli": "Terminal",
+  "loom-watch": "Watcher",
   "daddy-cli": "Terminal",
   "daddy-watch": "Watcher",
   "cursor-hook": "Cursor",
@@ -59,7 +61,7 @@ async function api(path, options = {}) {
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${state.token}`,
-      "X-Daddy-Client": "dashboard",
+      "X-Loom-Client": "dashboard",
     },
   });
   const body = await response.json().catch(() => ({}));
@@ -164,7 +166,7 @@ function renderTree(data) {
   $("#tree").innerHTML = `
     <div class="root">
       <span class="seal">D</span>
-      <strong>Daddy AI</strong>
+      <strong>LoomAI</strong>
       <span class="root-note">memory · policy · delivery</span>
     </div>
     <ul class="branches">${members}</ul>
@@ -292,7 +294,7 @@ function describe(event) {
 
 function entryHtml(event, fresh) {
   const time = new Date(event.at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-  const who = event.user ?? "Daddy AI";
+  const who = event.user ?? "LoomAI";
   const agent = agentName(event.client) || event.device || "";
   return `
     <li class="entry ${esc(event.decision)} ${fresh ? "fresh" : ""}">
@@ -418,7 +420,7 @@ async function boot() {
     await Promise.all([loadStats(), loadLedger()]);
     connect();
   } catch (error) {
-    if (error.message !== "unauthorized") showGate(`Could not reach Daddy AI: ${error.message}`);
+    if (error.message !== "unauthorized") showGate(`Could not reach LoomAI: ${error.message}`);
   }
   setInterval(() => refreshFamily(), 60000);
 }

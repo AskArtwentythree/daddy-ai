@@ -5,8 +5,8 @@ import os
 import psycopg
 import pytest
 
-ADMIN_URL = os.environ.get("DADDY_TEST_ADMIN_URL", "postgresql://daddy:daddy@localhost:5433/daddy")
-TEST_DB = "daddy_test"
+ADMIN_URL = os.environ.get("LOOM_TEST_ADMIN_URL", "postgresql://daddy:daddy@localhost:5433/daddy")
+TEST_DB = "loom_test"
 
 
 @pytest.fixture(scope="module")
@@ -18,13 +18,13 @@ def api(tmp_path_factory):
     except psycopg.OperationalError:
         pytest.skip("Postgres is not running (docker compose up -d)")
 
-    os.environ["DADDY_DATABASE_URL"] = ADMIN_URL.rsplit("/", 1)[0] + f"/{TEST_DB}"
-    os.environ["DADDY_BLOB_DIR"] = str(tmp_path_factory.mktemp("blobs"))
+    os.environ["LOOM_DATABASE_URL"] = ADMIN_URL.rsplit("/", 1)[0] + f"/{TEST_DB}"
+    os.environ["LOOM_BLOB_DIR"] = str(tmp_path_factory.mktemp("blobs"))
     from fastapi.testclient import TestClient
 
-    from daddy_server import db
-    from daddy_server.api import app
-    from daddy_server.config import get_settings
+    from loom_server import db
+    from loom_server.api import app
+    from loom_server.config import get_settings
 
     get_settings.cache_clear()
     db._pool = None
@@ -34,7 +34,7 @@ def api(tmp_path_factory):
 
 
 def auth(token: str) -> dict:
-    return {"Authorization": f"Bearer {token}", "X-Daddy-Client": "pytest"}
+    return {"Authorization": f"Bearer {token}", "X-Loom-Client": "pytest"}
 
 
 def test_family_flow(api):
@@ -99,13 +99,13 @@ def test_family_flow(api):
 
 
 def _new_family(api, monkeypatch, family: str, name: str) -> str:
-    from daddy_server.config import get_settings
+    from loom_server.config import get_settings
 
-    monkeypatch.setenv("DADDY_OPEN_SIGNUP", "true")
+    monkeypatch.setenv("LOOM_OPEN_SIGNUP", "true")
     get_settings.cache_clear()
     body = {"family_name": family, "email": f"{name.lower()}@example.com", "display_name": name, "device_name": "d"}
     token = api.post("/api/bootstrap", json=body).json()["token"]
-    monkeypatch.delenv("DADDY_OPEN_SIGNUP")
+    monkeypatch.delenv("LOOM_OPEN_SIGNUP")
     get_settings.cache_clear()
     return token
 
@@ -183,7 +183,7 @@ def test_rename(api, monkeypatch):
 def test_photos_and_pdfs_travel_byte_for_byte(api, monkeypatch):
     import base64
 
-    from daddy_server.config import get_settings
+    from loom_server.config import get_settings
 
     pia = _new_family(api, monkeypatch, "Photo Team", "Pia")
     api.post("/api/projects", json={"name": "Pics"}, headers=auth(pia))
@@ -204,16 +204,16 @@ def test_photos_and_pdfs_travel_byte_for_byte(api, monkeypatch):
     assert send(filename="cat.png", content="x", content_base64=encoded).status_code == 400
     assert send(filename="cert.p12", content_base64=encoded).status_code == 403
 
-    monkeypatch.setenv("DADDY_MAX_ARTIFACT_BYTES", "1000")
+    monkeypatch.setenv("LOOM_MAX_ARTIFACT_BYTES", "1000")
     get_settings.cache_clear()
     too_big = send(filename="cat.png", content_base64=encoded)
-    monkeypatch.delenv("DADDY_MAX_ARTIFACT_BYTES")
+    monkeypatch.delenv("LOOM_MAX_ARTIFACT_BYTES")
     get_settings.cache_clear()
     assert too_big.status_code == 400 and "the limit is 1 KB" in too_big.json()["reason"]
 
-    old_cli = api.post(f"/api/inbox/{sent['id']}/accept", headers={**auth(quinn), "User-Agent": "daddy-cli/0.1"})
-    assert old_cli.status_code == 400 and "daddy update" in old_cli.json()["reason"]
-    assert old_cli.headers["X-Daddy-Latest-Cli"]
+    old_cli = api.post(f"/api/inbox/{sent['id']}/accept", headers={**auth(quinn), "User-Agent": "loom-cli/0.1"})
+    assert old_cli.status_code == 400 and "loom update" in old_cli.json()["reason"]
+    assert old_cli.headers["X-Loom-Latest-Cli"]
     accepted = api.post(f"/api/inbox/{sent['id']}/accept", headers=auth(quinn)).json()
     assert "content" not in accepted and base64.b64decode(accepted["content_base64"]) == photo
 

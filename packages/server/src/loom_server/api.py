@@ -1,4 +1,4 @@
-"""Daddy AI gateway: the single entry point every family member's agent talks to."""
+"""LoomAI gateway: the single entry point every family member's agent talks to."""
 
 from __future__ import annotations
 
@@ -18,9 +18,9 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from daddy_common import guard
-from daddy_common.secrets import scan_text
-from daddy_common.version import CLI_VERSION, cli_version_of
+from loom_common import guard
+from loom_common.secrets import scan_text
+from loom_common.version import CLI_VERSION, cli_version_of
 
 from . import delivery, retrieval
 from .audit import AuditScope, audited, record
@@ -52,7 +52,7 @@ from .providers.embeddings import get_embedder
 from .providers.llm import get_llm
 from .providers.rerank import get_reranker
 
-log = logging.getLogger("daddy")
+log = logging.getLogger("loom")
 Role = Literal["owner", "member", "viewer"]
 
 
@@ -64,13 +64,14 @@ async def lifespan(_: FastAPI):
     await run_in_threadpool(close_pool)
 
 
-app = FastAPI(title="Daddy AI", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="LoomAI", version="0.1.0", lifespan=lifespan)
 
 
 @app.middleware("http")
 async def advertise_latest_cli(request: Request, call_next):
     response = await call_next(request)
-    response.headers["X-Daddy-Latest-Cli"] = CLI_VERSION
+    response.headers["X-Loom-Latest-Cli"] = CLI_VERSION
+    response.headers["X-Daddy-Latest-Cli"] = CLI_VERSION  # what clients from before the rename look for
     return response
 
 
@@ -801,7 +802,7 @@ async def events(websocket: WebSocket, token: str, client: str | None = None):
 # ── Dashboard ─────────────────────────────────────────────────────────────────
 
 DASHBOARD_DEVICE = "Dashboard"
-NON_AGENT_CLIENTS = ("dashboard", "cursor-hook", "daddy-watch")
+NON_AGENT_CLIENTS = ("dashboard", "cursor-hook", "loom-watch")
 _dashboard_codes: dict[str, tuple[UUID, float]] = {}
 
 
@@ -820,7 +821,7 @@ def dashboard_link(actor: Actor = Depends(require_actor)) -> dict:
 def dashboard_session(body: DashboardLoginBody) -> dict:
     entry = _dashboard_codes.pop(hash_secret(body.code.strip()), None)
     if entry is None or entry[1] < time.monotonic():
-        raise PolicyDenied("This dashboard link has expired; run `daddy dashboard` again")
+        raise PolicyDenied("This dashboard link has expired; run `loom dashboard` again")
     with connection() as conn:
         conn.execute(
             "UPDATE devices SET revoked_at = now() WHERE user_id = %s AND name = %s AND revoked_at IS NULL",

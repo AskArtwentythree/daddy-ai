@@ -8,7 +8,7 @@ from uuid import UUID
 
 import psycopg
 
-from daddy_common.secrets import Finding
+from loom_common.secrets import Finding
 
 from .auth import Actor
 from .errors import NotFound, PolicyDenied

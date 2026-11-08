@@ -1,4 +1,4 @@
-"""``daddy``: the family member's side of Daddy AI."""
+"""``loom``: the family member's side of LoomAI."""
 
 from __future__ import annotations
 
@@ -17,19 +17,19 @@ from urllib.parse import urlparse
 
 import typer
 
-from daddy_common import guard
-from daddy_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
-from daddy_common.ignore import skip_reason
-from daddy_common.secrets import is_sensitive_path, scan_text
-from daddy_common.version import CLI_VERSION, is_older
+from loom_common import guard
+from loom_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
+from loom_common.ignore import skip_reason
+from loom_common.secrets import is_sensitive_path, scan_text
+from loom_common.version import CLI_VERSION, is_older
 
 from . import connect as connectors
 from . import render, updates
-from .client import DaddyClient, DaddyError
+from .client import LoomClient, LoomError
 from .config import HOSTED_SERVER, Config, config_path, load_config, save_config
 from .installer import install
 
-app = typer.Typer(help="Daddy AI: your team's shared project brain.", no_args_is_help=True)
+app = typer.Typer(help="LoomAI: your team's shared project brain.", no_args_is_help=True)
 project_app = typer.Typer(help="Create projects and manage who is in them.", no_args_is_help=True)
 hook_app = typer.Typer(help="Handlers called by Cursor and Claude Code hooks (not for direct use).")
 guard_app = typer.Typer(help="The agent guard: what agents may run, read and call.", no_args_is_help=True)
@@ -40,12 +40,12 @@ app.add_typer(guard_app, name="guard")
 ProjectOpt = Annotated[str | None, typer.Option("--project", "-p", help="Project slug")]
 BATCH_FILES = 150
 BATCH_BYTES = 3_000_000
-INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh"
+INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh"
 
 
 def _show_version(value: bool) -> None:
     if value:
-        typer.echo(f"daddy {CLI_VERSION}")
+        typer.echo(f"loom {CLI_VERSION}")
         raise typer.Exit()
 
 
@@ -63,11 +63,11 @@ def _tell_about_update(latest: str) -> None:
         typer.secho(updates.notice(latest), fg="yellow", err=True)
 
 
-def _client(config: Config | None = None, timeout: float = 120) -> DaddyClient:
+def _client(config: Config | None = None, timeout: float = 120) -> LoomClient:
     config = config or load_config()
     if not config.token:
-        _fail("Not connected yet. Run `daddy init` (first person) or `daddy join <code>`.")
-    return DaddyClient(config, client_name="daddy-cli", timeout=timeout, on_update=_tell_about_update)
+        _fail("Not connected yet. Run `loom init` (first person) or `loom join <code>`.")
+    return LoomClient(config, client_name="loom-cli", timeout=timeout, on_update=_tell_about_update)
 
 
 def _fail(message: str) -> None:
@@ -78,7 +78,7 @@ def _fail(message: str) -> None:
 def _call(fn, *args, **kwargs):
     try:
         return fn(*args, **kwargs)
-    except DaddyError as error:
+    except LoomError as error:
         _fail(("Denied: " if error.denied else "Error: ") + error.reason)
 
 
@@ -87,14 +87,14 @@ def _keep_current_connection(config: Config, switch: bool, again: str) -> None:
     if not config.token:
         return
     try:
-        me = DaddyClient(config, timeout=10).get("/api/me")
-    except DaddyError:
+        me = LoomClient(config, timeout=10).get("/api/me")
+    except LoomError:
         me = None  # revoked or unreachable: replacing it is the way back in, but keep a copy anyway
     if me and not switch:
         _fail(
             f"This computer is already connected to the '{me['family']}' family as {me['user']}, and joining "
             "replaces that connection.\n"
-            f"To be in both, give the new team its own folder:  DADDY_HOME=~/.daddy-<team> {again}\n"
+            f"To be in both, give the new team its own folder:  LOOM_HOME=~/.loom-<team> {again}\n"
             f"To replace it anyway:  {again} --switch   (the current connection is backed up first)"
         )
     backup = config_path().with_name(f"config.backup-{datetime.now():%Y%m%d-%H%M%S}.json")
@@ -115,18 +115,18 @@ def init(
     family: Annotated[str, typer.Option(prompt="Family (team) name")],
     name: Annotated[str, typer.Option(prompt="Your name")],
     email: Annotated[str, typer.Option(prompt="Your email")],
-    server: Annotated[str, typer.Option(help="Daddy AI URL (default: the hosted Daddy AI)")] = HOSTED_SERVER,
+    server: Annotated[str, typer.Option(help="LoomAI URL (default: the hosted LoomAI)")] = HOSTED_SERVER,
     device: Annotated[str | None, typer.Option(help="Name for this computer")] = None,
     secret: Annotated[str | None, typer.Option(help="Bootstrap secret, for self-hosted servers")] = None,
     switch: Annotated[bool, typer.Option("--switch", help="Replace this computer's current team")] = False,
 ) -> None:
     """Start a new family (your team) and become its admin."""
     config = load_config()
-    _keep_current_connection(config, switch, "daddy init")
+    _keep_current_connection(config, switch, "loom init")
     config.server_url = server.rstrip("/")
     config.default_project = None
     result = _call(
-        DaddyClient(config).post,
+        LoomClient(config).post,
         "/api/bootstrap",
         {
             "family_name": family,
@@ -139,27 +139,27 @@ def init(
     config.token, config.user, config.family = result["token"], result["user"], result["family"]
     save_config(config)
     typer.secho(f"Welcome, {name}! You are the admin of the '{family}' family.", fg="green")
-    typer.echo("Next: `daddy project create <name>`, `daddy ingest .`, then `daddy invite -p <project>`.")
+    typer.echo("Next: `loom project create <name>`, `loom ingest .`, then `loom invite -p <project>`.")
 
 
 @app.command()
 def join(
     code: str,
-    server: Annotated[str, typer.Option(help="Daddy AI URL (default: the hosted Daddy AI)")] = HOSTED_SERVER,
+    server: Annotated[str, typer.Option(help="LoomAI URL (default: the hosted LoomAI)")] = HOSTED_SERVER,
     device: Annotated[str | None, typer.Option(help="Name for this computer")] = None,
-    name: Annotated[str | None, typer.Option(envvar="DADDY_NAME", help="Your name (team links ask for it)")] = None,
-    email: Annotated[str | None, typer.Option(envvar="DADDY_EMAIL", help="Your email (team links ask)")] = None,
+    name: Annotated[str | None, typer.Option(envvar="LOOM_NAME", help="Your name (team links ask for it)")] = None,
+    email: Annotated[str | None, typer.Option(envvar="LOOM_EMAIL", help="Your email (team links ask)")] = None,
     switch: Annotated[bool, typer.Option("--switch", help="Replace this computer's current team")] = False,
 ) -> None:
     """Join a family with the invite code or team link an admin gave you."""
     config = load_config()
-    _keep_current_connection(config, switch, f"daddy join {code}")
+    _keep_current_connection(config, switch, f"loom join {code}")
     config.server_url = server.rstrip("/")
-    client = DaddyClient(config)
+    client = LoomClient(config)
     body = {"code": code, "device_name": device or _device_name(), "display_name": name, "email": email}
     try:
         result = client.post("/api/join", body)
-    except DaddyError as error:
+    except LoomError as error:
         if "needs your name and email" not in error.reason:
             _fail(("Denied: " if error.denied else "Error: ") + error.reason)
         typer.echo("This is a team link, so tell the team who you are.")
@@ -180,10 +180,10 @@ def _next_steps() -> None:
     except RuntimeError:
         ready = []
     if ready:
-        typer.echo(f"{' and '.join(ready)} already use Daddy on this computer, so no restart is needed.")
-        typer.echo("Just ask your agent: “Daddy, who am I?”")
+        typer.echo(f"{' and '.join(ready)} already use Loom on this computer, so no restart is needed.")
+        typer.echo("Just ask your agent: “Loom, who am I?”")
     else:
-        typer.echo("Next: `daddy connect all`, then ask your agent: “Daddy, who am I?”")
+        typer.echo("Next: `loom connect all`, then ask your agent: “Loom, who am I?”")
 
 
 @app.command()
@@ -194,13 +194,13 @@ def status() -> None:
     typer.echo(render.status(_call(client.get, "/api/me"), config.server_url))
     for scope, folder in (("global", Path.home()), ("this folder", Path.cwd())):
         cursor_mcp = folder / ".cursor" / "mcp.json"
-        connected = cursor_mcp.exists() and '"daddy"' in cursor_mcp.read_text()
+        connected = cursor_mcp.exists() and '"loom"' in cursor_mcp.read_text()
         typer.echo(f"Cursor ({scope}): {'connected' if connected else 'not connected'}")
     typer.echo(f"Config: {config_path()}")
     if client.latest_cli and is_older(CLI_VERSION, client.latest_cli):
-        typer.secho(f"daddy {CLI_VERSION}, update available ({client.latest_cli}): run `daddy update`", fg="yellow")
+        typer.secho(f"loom {CLI_VERSION}, update available ({client.latest_cli}): run `loom update`", fg="yellow")
     else:
-        typer.echo(f"daddy {CLI_VERSION} (up to date)" if client.latest_cli else f"daddy {CLI_VERSION}")
+        typer.echo(f"loom {CLI_VERSION} (up to date)" if client.latest_cli else f"loom {CLI_VERSION}")
 
 
 @app.command()
@@ -230,7 +230,7 @@ def invite(
     role: Annotated[str, typer.Option(help="owner, member or viewer")] = "member",
     uses: Annotated[int, typer.Option(help="How many people a team link lets in")] = 20,
 ) -> None:
-    """Invite people: `daddy invite -p my-app` gives one team link; `daddy invite sri@x.com -n Sri` a personal one."""
+    """Invite people: `loom invite -p my-app` gives one team link; `loom invite sri@x.com -n Sri` a personal one."""
     if email and not name:
         name = email.split("@")[0].replace(".", " ").title()
     result = _call(
@@ -251,16 +251,16 @@ def invite(
         )
     where = "" if server == HOSTED_SERVER else f" {server}"
     typer.echo(f"  curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {result['code']}{where}")
-    typer.echo("If they already have the `daddy` command:")
-    typer.echo(f"  daddy join {result['code']}{' --server' + where if where else ''} && daddy connect all")
+    typer.echo("If they already have the `loom` command:")
+    typer.echo(f"  loom join {result['code']}{' --server' + where if where else ''} && loom connect all")
     if urlparse(server).hostname in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):
         typer.secho(
-            f"Warning: you are connected to a Daddy AI server on this computer ({server}), so nobody else can use "
-            "this invite. To move to the hosted Daddy AI, run `daddy logout`, then the install line from the README.",
+            f"Warning: you are connected to a LoomAI server on this computer ({server}), so nobody else can use "
+            "this invite. To move to the hosted LoomAI, run `loom logout`, then the install line from the README.",
             fg="yellow",
         )
     if not email:
-        typer.echo(f"Stop it working early: daddy cancel-invite {result['code']}")
+        typer.echo(f"Stop it working early: loom cancel-invite {result['code']}")
 
 
 @app.command("cancel-invite")
@@ -423,7 +423,7 @@ def github(
     project: ProjectOpt = None,
     ref: Annotated[str | None, typer.Option(help="Branch, tag or commit")] = None,
 ) -> None:
-    """Import a GitHub repository into a project (runs on the server; `daddy watch` shows progress)."""
+    """Import a GitHub repository into a project (runs on the server; `loom watch` shows progress)."""
     client = _client()
     slug = _call(client.resolve_project, project)
     _call(
@@ -440,7 +440,7 @@ def ask(
     project: ProjectOpt = None,
     path: Annotated[str | None, typer.Option(help="Restrict to a folder")] = None,
 ) -> None:
-    """Ask Daddy AI about your projects; answers cite their sources."""
+    """Ask LoomAI about your projects; answers cite their sources."""
     result = _call(
         _client().post,
         "/api/ask",
@@ -515,7 +515,7 @@ def send(
     findings = scan_text(payload.get("content", "")) + scan_text(note)
     if is_sensitive_path(filename) or findings:
         reason = "credential file" if not findings else "; ".join(f.describe() for f in findings[:3])
-        with contextlib.suppress(DaddyError):
+        with contextlib.suppress(LoomError):
             _client().post(
                 "/api/agent-events",
                 {
@@ -588,11 +588,11 @@ def watch(
     _client(config)
     if window:
         if watch_running():
-            typer.echo("`daddy watch` is already running in another window.")
+            typer.echo("`loom watch` is already running in another window.")
         elif open_watch_window(connectors.executable(), connectors.custom_home()):
-            typer.echo("Opened `daddy watch` in a new terminal window.")
+            typer.echo("Opened `loom watch` in a new terminal window.")
         else:
-            typer.echo("No terminal app found; run `daddy watch` in a new terminal.")
+            typer.echo("No terminal app found; run `loom watch` in a new terminal.")
         return
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(Watcher(config, typer.echo, feed=feed).run())
@@ -655,9 +655,9 @@ def connect(
     project_dir: Annotated[Path | None, typer.Option(help="Connect only this project folder")] = None,
     hooks: Annotated[bool, typer.Option(help="Cursor: also install the prompt guard and audit hooks")] = False,
 ) -> None:
-    """Connect AI agents on this computer to Daddy AI (`all` connects every one it finds)."""
+    """Connect AI agents on this computer to LoomAI (`all` connects every one it finds)."""
     if not load_config().token:
-        _fail("Run `daddy init` or `daddy join` first.")
+        _fail("Run `loom init` or `loom join` first.")
     supported = ("cursor", "claude", "claude-desktop")
     if agent == "all":
         agents = connectors.detect_agents()
@@ -673,7 +673,7 @@ def connect(
         if name == "cursor":
             for change in connectors.connect_cursor(project_dir, hooks):
                 typer.secho(f"✓ Cursor: {change}", fg="green")
-            notes.append("Cursor: ready now, no restart needed (it reloads Daddy by itself).")
+            notes.append("Cursor: ready now, no restart needed (it reloads Loom by itself).")
         elif name == "claude":
             done, message = connectors.connect_claude()
             typer.secho(("✓ Claude Code: " if done else "") + message, fg="green" if done else "yellow")
@@ -683,35 +683,41 @@ def connect(
             message, changed = connectors.connect_claude_desktop()
             typer.secho(f"✓ Claude app: {message}", fg="green")
             notes.append(_refresh_claude_desktop(changed))
+    from .watch import replace_legacy_watches
+
+    if replaced := replace_legacy_watches(connectors.executable()):
+        notes.append(f"Reopened {replaced} watch window(s) as `loom watch` (Daddy AI is now LoomAI).")
     for note in notes:
         typer.echo(note)
-    typer.echo("Then just ask your agent: “Daddy, who am I?”")
+    typer.echo("Then just ask your agent: “Loom, who am I?”")
 
 
 @app.command()
 def update() -> None:
-    """Install the latest daddy and switch your AI apps and watch window over to it."""
+    """Install the latest loom and switch your AI apps and watch window over to it."""
     uv = updates.find_uv()
     if uv is None:
         _fail(f"Can't find uv. Paste the install line again instead:\n  curl -fsSL {INSTALL_SCRIPT_URL} | sh")
     if not updates.installed_as_uv_tool(uv):
-        _fail(f"This daddy runs from {sys.prefix}, not from the installer; update that checkout with `git pull`.")
+        _fail(f"This loom runs from {sys.prefix}, not from the installer; update that checkout with `git pull`.")
     reconnect = [connectors.executable(), "connect", "all"]
     if sys.platform == "win32":
-        # Windows can't replace daddy.exe while it runs, so finish in a new window once this one exits.
-        script = f"timeout /t 2 >nul & {subprocess.list2cmdline(updates.install_command(uv))} & " \
+        # Windows can't replace loom.exe while it runs, so finish in a new window once this one exits.
+        script = f"timeout /t 2 >nul & {subprocess.list2cmdline(updates.legacy_uninstall_command(uv))} >nul 2>&1 & " \
+                 f"{subprocess.list2cmdline(updates.install_command(uv))} & " \
                  f"{subprocess.list2cmdline(reconnect)} & pause"
         subprocess.Popen(["cmd", "/c", script], creationflags=subprocess.CREATE_NEW_CONSOLE)
         typer.echo("Updating in a new window; follow it there.")
         return
-    typer.echo(f"Updating daddy {CLI_VERSION}…")
+    typer.echo(f"Updating loom {CLI_VERSION}…")
+    subprocess.run(updates.legacy_uninstall_command(uv), check=False, capture_output=True)
     if subprocess.run(updates.install_command(uv), check=False).returncode != 0:
-        _fail("The update failed; your current daddy still works. Try again, or paste the install line again.")
+        _fail("The update failed; your current loom still works. Try again, or paste the install line again.")
     new = updates.installed_version() or "?"
-    typer.secho(f"✓ daddy {new} installed", fg="green")
+    typer.secho(f"✓ loom {new} installed", fg="green")
     if subprocess.run(reconnect, check=False).returncode != 0:
-        typer.echo("Run `daddy connect all` to finish connecting your apps.")
-    typer.echo("Your `daddy watch` window switches to the new version by itself within a minute.")
+        typer.echo("Run `loom connect all` to finish connecting your apps.")
+    typer.echo("Your `loom watch` window switches to the new version by itself within a minute.")
 
 
 def _refresh_claude_desktop(changed: bool) -> str:
@@ -722,13 +728,13 @@ def _refresh_claude_desktop(changed: bool) -> str:
         return "Claude app: ready the next time you open it."
     by_hand = "quit it fully (" + ("Cmd+Q" if sys.platform == "darwin" else "tray icon → Quit") + ") and open it again"
     if sys.platform == "darwin" and sys.stdin.isatty() and typer.confirm(
-        "The Claude app is open and needs a quick restart to load Daddy (your chats are kept). Restart it now?",
+        "The Claude app is open and needs a quick restart to load Loom (your chats are kept). Restart it now?",
         default=True,
     ):
         if connectors.restart_claude_desktop():
-            return "Claude app: restarted, Daddy is ready."
+            return "Claude app: restarted, Loom is ready."
         return f"Claude app: couldn't restart it automatically; {by_hand}."
-    return f"Claude app: {by_hand} to load Daddy."
+    return f"Claude app: {by_hand} to load Loom."
 
 
 @app.command()
@@ -775,7 +781,7 @@ def _check_kind(kind: str) -> guard.Kind:
 def guard_rules() -> None:
     """Show the rules every agent in the family follows: the team's own first, then the built-in ones."""
     rules = _call(_client().get, "/api/guard/rules")
-    typer.echo("Team rules (checked first):" if rules["family"] else "No team rules yet (`daddy guard add`).")
+    typer.echo("Team rules (checked first):" if rules["family"] else "No team rules yet (`loom guard add`).")
     for rule in rules["family"]:
         typer.echo(f"  {rule['id']}  {rule['kind']:<5} {rule['verdict']:<5} /{rule['pattern']}/  {rule['reason']}")
     typer.echo("Built-in rules:")
@@ -791,7 +797,7 @@ def guard_add(
     reason: Annotated[str, typer.Option("--reason", "-r", help="What people see when it applies")],
     verdict: Annotated[str, typer.Option(help="deny, ask (needs the user's OK) or allow")] = "deny",
 ) -> None:
-    """Add a team rule (admins), e.g. `daddy guard add shell "npm publish" -r "Releases go through CI"`."""
+    """Add a team rule (admins), e.g. `loom guard add shell "npm publish" -r "Releases go through CI"`."""
     if verdict not in ("deny", "ask", "allow"):
         _fail("The verdict must be deny, ask or allow.")
     body = {"kind": _check_kind(kind), "pattern": pattern, "verdict": verdict, "reason": reason}

@@ -1,11 +1,11 @@
-# Daddy AI
+# LoomAI
 
 **One brain for the whole team's AI agents.** Every teammate keeps using their own agent (Cursor,
-Claude Code, the Claude app). Those agents become *family members* that ask **Daddy AI**, the central brain, about
-the team's projects, and send files, skills and messages to each other through it. Daddy AI decides
+Claude Code, the Claude app). Those agents become *family members* that ask **LoomAI**, the central brain, about
+the team's projects, and send files, skills and messages to each other through it. LoomAI decides
 what each agent may see and send, blocks secrets, and records everything in one audit log.
 
-**There is nothing to host.** Daddy AI runs for you on AWS. You paste one line into a terminal and keep talking to
+**There is nothing to host.** LoomAI runs for you on AWS. You paste one line into a terminal and keep talking to
 your agent the way you already do.
 
 ## Start in one minute
@@ -18,26 +18,26 @@ or a Python setup: the installer brings everything it needs.
 Open a terminal and paste:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh | sh
 ```
 
 It asks three questions (team name, your name, your email), then:
-- installs the `daddy` command
-- creates your team on Daddy AI, with you as its admin
+- installs the `loom` command
+- creates your team on LoomAI, with you as its admin
 - connects every AI app it finds: Cursor and Claude Code (both with the agent guard), and the Claude app
-- opens a `daddy watch` window where teammates' messages and files show up live
+- opens a `loom watch` window where teammates' messages and files show up live
 
-Then ask your agent: **"Daddy, who am I?"** There's no restart to do: Cursor picks Daddy up by itself,
+Then ask your agent: **"Loom, who am I?"** There's no restart to do: Cursor picks Loom up by itself,
 Claude Code has it in every new session, and if the Claude app is open the installer offers to restart it for you
 (your chats are kept). Joining or switching teams later never needs a restart either.
 
-### 2. Give Daddy your project
+### 2. Give Loom your project
 
 In your project's folder:
 
 ```bash
-daddy project create "My App"
-daddy ingest .                        # or straight from GitHub: daddy github owner/repo
+loom project create "My App"
+loom ingest .                        # or straight from GitHub: loom github owner/repo
 ```
 
 `ingest` respects `.gitignore` and never uploads `.env` files, keys or anything that looks like a secret; those are
@@ -46,42 +46,42 @@ stopped on your computer. Run it again whenever the code changes a lot.
 ### 3. Invite your teammates
 
 ```bash
-daddy invite -p my-app
+loom invite -p my-app
 ```
 
 This prints **one team link**. Paste it into your team chat. Each teammate pastes it into a terminal:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh | sh -s -- inv_…
+curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh | sh -s -- inv_…
 ```
 
 It asks for their name and email, then puts them in your team and in `my-app` with their AI apps connected. The email
 is only their identity in the team; nothing is ever emailed.
 
 The link lets in up to 20 people (`--uses 50` for more) and expires after 7 days. Treat it like a password for
-your team chat: anyone who has it can join. You see everyone who joined in `daddy status`, the dashboard and the audit
-log, `daddy revoke` cuts off a computer, and `daddy cancel-invite inv_…` stops the link early.
+your team chat: anyone who has it can join. You see everyone who joined in `loom status`, the dashboard and the audit
+log, `loom revoke` cuts off a computer, and `loom cancel-invite inv_…` stops the link early.
 
-For one specific person, `daddy invite sri@example.com --name Sri -p my-app` makes a personal invite that works once.
+For one specific person, `loom invite sri@example.com --name Sri -p my-app` makes a personal invite that works once.
 Personal invites can also make someone a project owner (`--role owner`); team links can't.
 
 ### 4. Just talk to your agent
 
-There are no commands to learn. Once connected, your agent sees Daddy AI's tools and calls them by itself:
+There are no commands to learn. Once connected, your agent sees LoomAI's tools and calls them by itself:
 
 | Say to your agent | What happens |
 | --- | --- |
-| "Daddy, who am I?" | Your team, projects and inbox |
+| "Loom, who am I?" | Your team, projects and inbox |
 | "How does deploy work in this project?" | An answer from the team's code and docs, citing `file:lines` |
 | "What did we decide about the database?" | Finds the decision in docs and saved notes |
 | "Send the release checklist skill to Sri" | Secret check, then it installs itself into Sri's Cursor and Claude Code |
-| "Send Sri a message: the header needs fixing" | It pops up in Sri's `daddy watch` window with a notification |
-| "Send this file to Sri" | Any file up to 25 MB (code, photos, PDFs, zips), saved to Sri's `~/Daddy/inbox/<you>/` |
+| "Send Sri a message: the header needs fixing" | It pops up in Sri's `loom watch` window with a notification |
+| "Send this file to Sri" | Any file up to 25 MB (code, photos, PDFs, zips), saved to Sri's `~/Loom/inbox/<you>/` |
 | "Did anyone send me anything?" | Your inbox |
 | "Remember for the team: we freeze code on Wednesdays" | A note every teammate's agent can find right away |
-| "Daddy, change my name to Alex" | Teammates now see you, and send to you, as Alex |
+| "Loom, change my name to Alex" | Teammates now see you, and send to you, as Alex |
 
-If you ask about something that isn't in the project, Daddy says *"Not in project knowledge."* instead of guessing.
+If you ask about something that isn't in the project, Loom says *"Not in project knowledge."* instead of guessing.
 
 ## Everyday commands
 
@@ -89,29 +89,33 @@ You rarely need these, but they're there:
 
 | Command | Does |
 | --- | --- |
-| `daddy status` | Who you are, your projects, your inbox, which agents are connected, and whether an update is out |
-| `daddy update` | Install the newest version and switch your apps over to it |
-| `daddy rename "New Name"` | Change the name teammates see and send to (it must be unique in the team) |
-| `daddy watch` | Live window for messages, files and skills (the installer opens it for you) |
-| `daddy dashboard` | Opens the team dashboard in your browser |
-| `daddy ask "…"` | Ask from the terminal instead of through an agent |
-| `daddy send Sri ./design.png` | Send any file up to 25 MB, a skill (`SKILL.md`) or `--message "…"` |
-| `daddy project create "Name"` | A new project; you become its owner |
-| `daddy project add-member my-app sri@example.com` | Give someone already in the team access to a project |
-| `daddy invite -p my-app` | One team link for your chat (or `daddy invite sri@example.com -n Sri` for one person) |
-| `daddy cancel-invite inv_…` | Stop an invite or team link from working |
-| `daddy devices` / `daddy revoke <id>` | See connected computers and cut one off instantly |
-| `daddy audit -f` | Live log of every agent action (admins) |
+| `loom status` | Who you are, your projects, your inbox, which agents are connected, and whether an update is out |
+| `loom update` | Install the newest version and switch your apps over to it |
+| `loom rename "New Name"` | Change the name teammates see and send to (it must be unique in the team) |
+| `loom watch` | Live window for messages, files and skills (the installer opens it for you) |
+| `loom dashboard` | Opens the team dashboard in your browser |
+| `loom ask "…"` | Ask from the terminal instead of through an agent |
+| `loom send Sri ./design.png` | Send any file up to 25 MB, a skill (`SKILL.md`) or `--message "…"` |
+| `loom project create "Name"` | A new project; you become its owner |
+| `loom project add-member my-app sri@example.com` | Give someone already in the team access to a project |
+| `loom invite -p my-app` | One team link for your chat (or `loom invite sri@example.com -n Sri` for one person) |
+| `loom cancel-invite inv_…` | Stop an invite or team link from working |
+| `loom devices` / `loom revoke <id>` | See connected computers and cut one off instantly |
+| `loom audit -f` | Live log of every agent action (admins) |
 
-**Updating:** run `daddy update`. It installs the newest version, Cursor and the watch window switch to it by
+**Updating:** run `loom update`. It installs the newest version, Cursor and the watch window switch to it by
 themselves, and the Claude app is restarted for you if it's open. You don't have to keep track: when a new version
-is out, the watch window, `daddy status` and your agent tell you. (On a `daddy` from before 0.2, paste the install
+is out, the watch window, `loom status` and your agent tell you. (On a `loom` from before 0.2, paste the install
 line again once instead.)
+
+**Coming from Daddy AI?** LoomAI used to be called Daddy AI. Run `daddy update` once: your team, settings
+(`~/.daddy` becomes `~/.loom`) and app connections move over by themselves, and `daddy` keeps working as another
+name for `loom`.
 
 ### If something doesn't work
 
-- **`daddy: command not found`**: open a new terminal, or use the full path the installer printed.
-- **The agent doesn't know about Daddy**: run `daddy connect all`. In Cursor, open a new chat; in Claude Code, start a
+- **`loom: command not found`**: open a new terminal, or use the full path the installer printed.
+- **The agent doesn't know about Loom**: run `loom connect all`. In Cursor, open a new chat; in Claude Code, start a
   new session; if it still doesn't show up, quit the app fully and open it again.
 - **"Invite expired or already used"**: ask for a new one. Invites last 7 days; a personal invite works once and a
   team link until it's full.
@@ -119,27 +123,27 @@ line again once instead.)
   computer for the same person, the admin sends a personal invite.
 - **"This computer is already connected to the '…' family"**: a computer has one main team, and joining another
   would replace it. To be in both, give the second team its own folder:
-  `DADDY_HOME=~/.daddy-other daddy join <code>` (use the same `DADDY_HOME=…` prefix for its commands). To really
-  switch, add `--switch`; the old connection is saved as `~/.daddy/config.backup-*.json`.
+  `LOOM_HOME=~/.loom-other loom join <code>` (use the same `LOOM_HOME=…` prefix for its commands). To really
+  switch, add `--switch`; the old connection is saved as `~/.loom/config.backup-*.json`.
 - **Windows**: use WSL, or install [uv](https://docs.astral.sh/uv/) and run
-  `uv tool install "git+https://github.com/AskArtwentythree/daddy-ai#subdirectory=packages/cli"`, then
-  `daddy init` (or `daddy join <code>`) and `daddy connect all`.
+  `uv tool install "git+https://github.com/AskArtwentythree/loom-ai#subdirectory=packages/cli"`, then
+  `loom init` (or `loom join <code>`) and `loom connect all`.
 
 ## What it does
 
 ```mermaid
 flowchart LR
     subgraph Alice's laptop
-        AC[Cursor agent] -- MCP stdio --> AD[daddy CLI]
+        AC[Cursor agent] -- MCP stdio --> AD[loom CLI]
     end
     subgraph Bob's laptop
-        BC[Claude Code / Cursor] -- MCP stdio --> BD[daddy CLI]
-        BW[daddy watch] -. shows messages, saves files, installs skills .-> BS[~/.cursor/skills]
+        BC[Claude Code / Cursor] -- MCP stdio --> BD[loom CLI]
+        BW[loom watch] -. shows messages, saves files, installs skills .-> BS[~/.cursor/skills]
     end
     AD -- HTTPS + device token --> G
     BD -- HTTPS + device token --> G
     G -- WebSocket push --> BW
-    subgraph Daddy AI gateway
+    subgraph LoomAI gateway
         G[FastAPI gateway<br/>policy · secret scan · audit] --> R[Hybrid RAG<br/>dense + lexical + RRF + rerank]
         G --> I[Inbox<br/>store-and-forward]
         R --> PG[(Postgres + pgvector)]
@@ -149,12 +153,12 @@ flowchart LR
     end
 ```
 
-| Agent asks… | Daddy AI… |
+| Agent asks… | LoomAI… |
 | --- | --- |
 | "How do we deploy?" | answers from the project's code, docs and notes, citing `path:lines`, and only from projects the user belongs to |
 | "What's the capital of France?" | refuses with *"Not in project knowledge."* (a relevance threshold, so it never guesses) |
-| "Send my deploy skill to Bob" | checks both are project members, scans for secrets, puts it in Bob's inbox; Bob's `daddy watch` installs it into Cursor *and* Claude Code |
-| "Send Bob a message: lunch at noon?" | it appears in Bob's `daddy watch` window right away, with a desktop notification |
+| "Send my deploy skill to Bob" | checks both are project members, scans for secrets, puts it in Bob's inbox; Bob's `loom watch` installs it into Cursor *and* Claude Code |
+| "Send Bob a message: lunch at noon?" | it appears in Bob's `loom watch` window right away, with a desktop notification |
 | "Send `.env` to Bob" | blocks it on the laptop: it never leaves the computer, and the attempt is audited |
 | "Remember: we chose pgvector" | saves a note every teammate's agent can find immediately |
 
@@ -164,19 +168,19 @@ Controls for the Agent Harness track:
 - **Isolation**: every team on the hosted server is a separate family. Projects, people, deliveries, the audit log and the dashboard are all scoped to it; another team can't search, see or message yours.
 - **Secret scanning**: runs on the laptop before upload or send, again on the server, and optionally through a Bedrock Guardrail. The contents of text files are scanned; binary files (photos, PDFs) are not looked inside, but credential files like `.p12` or `id_rsa` are blocked by name either way.
 - **Prompt guard**: Cursor and Claude Code hooks block prompts containing secrets before they reach any model.
-- **Agent guard**: before Cursor or Claude Code runs a shell command, reads a file or calls a tool, it asks Daddy AI.
+- **Agent guard**: before Cursor or Claude Code runs a shell command, reads a file or calls a tool, it asks LoomAI.
   Shell commands and tool calls are decided by the gateway (and written to the ledger); file reads are decided on
   the laptop with the same rules. Without a connection, the laptop applies the same rules itself.
-- **Audit**: every allow, deny and error with latency, streamed live to admins (`daddy audit -f`).
+- **Audit**: every allow, deny and error with latency, streamed live to admins (`loom audit -f`).
 
 ### The agent guard
 
-| The agent tries to… | Daddy AI |
+| The agent tries to… | LoomAI |
 | --- | --- |
 | `rm -rf ~`, `mkfs`, `dd of=/dev/…` | blocks it |
 | `cat .env`, `scp id_rsa …`, `git add .env`, a command with a key in it | blocks it, and keeps the key out of the ledger |
-| read `.env`, a private key, `~/.daddy/`, or a file containing a secret | blocks it, so the secret never reaches the model |
-| change Daddy's own hooks or token (`.cursor/hooks.json`, `~/.daddy/`) | blocks it |
+| read `.env`, a private key, `~/.loom/`, or a file containing a secret | blocks it, so the secret never reaches the model |
+| change Loom's own hooks or token (`.cursor/hooks.json`, `~/.loom/`) | blocks it |
 | `curl … \| sh`, `git push --force`, `sudo`, `terraform destroy`, `DROP TABLE` | asks you first |
 | call a tool that deletes something (`github.delete_repo`) | asks you first |
 | anything else | lets it run, and records shell commands and tool calls in the ledger |
@@ -186,12 +190,12 @@ Secrets and credential files are always blocked; no rule can switch that off. Te
 before the built-in ones:
 
 ```bash
-daddy guard add shell "npm publish" -r "Releases go through CI"          # block
-daddy guard add mcp "^linear\." --verdict ask -r "Linear changes need a human"
-daddy guard add shell "^git push" --verdict allow -r "We push freely"    # overrides a built-in rule
-daddy guard rules                                                         # list everything
-daddy guard test shell "npm publish --tag next"                           # try a decision, nothing runs
-daddy guard remove <rule-id>
+loom guard add shell "npm publish" -r "Releases go through CI"          # block
+loom guard add mcp "^linear\." --verdict ask -r "Linear changes need a human"
+loom guard add shell "^git push" --verdict allow -r "We push freely"    # overrides a built-in rule
+loom guard rules                                                         # list everything
+loom guard test shell "npm publish --tag next"                           # try a decision, nothing runs
+loom guard remove <rule-id>
 ```
 
 The RAG pipeline follows the practices evaluated in our thesis:
@@ -206,10 +210,10 @@ The RAG pipeline follows the practices evaluated in our thesis:
 
 Access is per project: an agent only sees projects its user belongs to.
 
-- **Anyone in the team can create a project** with `daddy project create`, and becomes its owner.
+- **Anyone in the team can create a project** with `loom project create`, and becomes its owner.
 - **Add an existing teammate** without a new invite:
-  `daddy project add-member my-app sri@example.com --role member`. Remove them with `daddy project remove-member`.
-- **Questions don't need a project name.** Daddy searches every project you belong to; `--project` narrows it down.
+  `loom project add-member my-app sri@example.com --role member`. Remove them with `loom project remove-member`.
+- **Questions don't need a project name.** Loom searches every project you belong to; `--project` narrows it down.
 - **Deliveries happen inside a project** that both people belong to.
 - **The email in an invite is the person's identity**, so use a different email per person.
 
@@ -223,20 +227,20 @@ Access is per project: an agent only sees projects its user belongs to.
 ## Dashboard
 
 ```bash
-daddy dashboard
+loom dashboard
 ```
 
 This opens **the family ledger** in your browser with a one-time login link that expires after two minutes, so the CLI's token never reaches the browser.
 
 - **Figures:** questions answered, deliveries, actions stopped and active agents over the last 24 hours.
-- **Family tree:** Daddy AI at the root, then each member, their computers, and the agents seen on each computer. Admins can revoke a computer from here.
+- **Family tree:** LoomAI at the root, then each member, their computers, and the agents seen on each computer. Admins can revoke a computer from here.
 - **Ledger:** a live, filterable record of every agent action, with blocked actions shown in red and the reason for each block.
 - **Projects and house rules:** what each project holds, and the policies enforced on every call.
 
 ## Running your own server (optional)
 
-The hosted Daddy AI is the easy path. Run your own when the code must stay in your own cloud account, or to develop
-Daddy AI itself. Point the CLI at it with `--server` (or `DADDY_SERVER=… ` before the install line); invite lines
+The hosted LoomAI is the easy path. Run your own when the code must stay in your own cloud account, or to develop
+LoomAI itself. Point the CLI at it with `--server` (or `LOOM_SERVER=… ` before the install line); invite lines
 from your server then include its address automatically.
 
 - **Your own AWS account.** One command builds the whole stack: CloudFront (HTTPS, no domain needed), an ALB, EC2 in a
@@ -245,16 +249,16 @@ from your server then include its address automatically.
   bash deploy/aws/deploy.sh                    # needs AWS credentials with Bedrock enabled, in us-east-1
   OPEN_SIGNUP=true bash deploy/aws/deploy.sh   # let anyone start a team without the secret (how ours runs)
   ```
-  It prints the `daddy init --server … --secret …` command that creates the first team. Details:
+  It prints the `loom init --server … --secret …` command that creates the first team. Details:
   [`deploy/README.md`](deploy/README.md), background and the IAM policy in [`docs/AWS.md`](docs/AWS.md), and the
-  architecture diagram in [`docs/daddy-ai-aws-architecture.drawio`](docs/daddy-ai-aws-architecture.drawio).
+  architecture diagram in [`docs/loom-ai-aws-architecture.drawio`](docs/loom-ai-aws-architecture.drawio).
 
 - **Your laptop.** Needs Docker and [uv](https://docs.astral.sh/uv/). Only this computer can reach it.
   ```bash
   docker compose up -d                 # Postgres 17 + pgvector on :5433
   uv sync
-  uv run daddy-server                  # gateway on http://127.0.0.1:8787 (keep running)
-  uv run daddy init --server http://127.0.0.1:8787
+  uv run loom-server                  # gateway on http://127.0.0.1:8787 (keep running)
+  uv run loom init --server http://127.0.0.1:8787
   ```
 
 ### Models
@@ -262,18 +266,18 @@ from your server then include its address automatically.
 A self-hosted server runs everything locally by default:
 - hashed n-gram embeddings
 - a lexical reranker
-- an extractive answer that quotes the top passages, or Ollama if you set `DADDY_LLM_PROVIDER=ollama`
+- an extractive answer that quotes the top passages, or Ollama if you set `LOOM_LLM_PROVIDER=ollama`
 
 The hosted server and the AWS deploy use Bedrock. To switch a laptop server to Bedrock, set in `.env`
 (see `.env.example`):
 
 ```bash
-DADDY_EMBEDDING_PROVIDER=bedrock     # Cohere Embed Multilingual v3 (1024-d)
-DADDY_RERANK_PROVIDER=bedrock        # Cohere Rerank 3.5 via Bedrock Rerank
-DADDY_LLM_PROVIDER=bedrock           # Claude via Converse
-DADDY_S3_BUCKET=…                    # artifacts and raw files in S3 (SSE-KMS)
-DADDY_GUARDRAIL_ID=…                 # optional Bedrock Guardrail on everything shared
-DADDY_OPEN_SIGNUP=true               # optional: anyone may start a team without the bootstrap secret
+LOOM_EMBEDDING_PROVIDER=bedrock     # Cohere Embed Multilingual v3 (1024-d)
+LOOM_RERANK_PROVIDER=bedrock        # Cohere Rerank 3.5 via Bedrock Rerank
+LOOM_LLM_PROVIDER=bedrock           # Claude via Converse
+LOOM_S3_BUCKET=…                    # artifacts and raw files in S3 (SSE-KMS)
+LOOM_GUARDRAIL_ID=…                 # optional Bedrock Guardrail on everything shared
+LOOM_OPEN_SIGNUP=true               # optional: anyone may start a team without the bootstrap secret
 ```
 
 Changing the embedding model requires re-ingesting, because vectors from different models are not comparable.
@@ -283,16 +287,16 @@ Changing the embedding model requires re-ingesting, because vectors from differe
 ```bash
 uv run pytest                        # unit tests + full API flow on a throwaway database
 uv run ruff check packages scripts
-uv run python scripts/mcp_smoke.py   # talk to `daddy mcp` exactly like Cursor does
+uv run python scripts/mcp_smoke.py   # talk to `loom mcp` exactly like Cursor does
 docker compose down -v               # wipe all data
 ```
 
-**Releasing a CLI change:** bump `CLI_VERSION` in `packages/common/src/daddy_common/version.py` and `version` in
+**Releasing a CLI change:** bump `CLI_VERSION` in `packages/common/src/loom_common/version.py` and `version` in
 `packages/cli/pyproject.toml` (a test checks they match), push, then deploy the server. The server announces its
-`CLI_VERSION` as the latest, so every `daddy` behind it starts showing the update notice.
+`CLI_VERSION` as the latest, so every `loom` behind it starts showing the update notice.
 
 | Package | Contents |
 | --- | --- |
 | `packages/server` | FastAPI gateway: auth, policy, audit, ingestion and chunking, hybrid retrieval, delivery, WebSocket events, providers |
-| `packages/cli` | `daddy` CLI: onboarding, ingestion, inbox, `watch`, `connect`, the local MCP server and Cursor hooks |
+| `packages/cli` | `loom` CLI: onboarding, ingestion, inbox, `watch`, `connect`, the local MCP server and Cursor hooks |
 | `packages/common` | Secret scanner and ignore rules shared by the laptop and the server |

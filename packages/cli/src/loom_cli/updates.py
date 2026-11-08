@@ -1,4 +1,4 @@
-"""Keeping `daddy` current: update notices and the `daddy update` command."""
+"""Keeping `loom` current: update notices and the `loom update` command."""
 
 from __future__ import annotations
 
@@ -11,16 +11,16 @@ import time
 from importlib import metadata
 from pathlib import Path
 
-from daddy_common.version import CLI_VERSION
+from loom_common.version import CLI_VERSION
 
 from .config import home_dir
 
-SOURCE = "git+https://github.com/AskArtwentythree/daddy-ai#subdirectory=packages/cli"
+SOURCE = "git+https://github.com/AskArtwentythree/loom-ai#subdirectory=packages/cli"
 NOTICE_EVERY_SECONDS = 12 * 3600
 
 
 def notice(latest: str) -> str:
-    return f"A new Daddy ({latest}) is available, you have {CLI_VERSION}. Run: daddy update"
+    return f"A new Loom ({latest}) is available, you have {CLI_VERSION}. Run: loom update"
 
 
 def due(latest: str, channel: str) -> bool:
@@ -42,7 +42,7 @@ def due(latest: str, channel: str) -> bool:
 def installed_version() -> str | None:
     """The version currently installed on disk, which differs from the running one right after an update."""
     try:
-        return metadata.version("daddy-cli")
+        return metadata.version("loom-cli")
     except metadata.PackageNotFoundError:
         return None
 
@@ -61,5 +61,10 @@ def installed_as_uv_tool(uv: str) -> bool:
     return tools is not None and Path(sys.prefix).resolve().is_relative_to(tools)
 
 
+def legacy_uninstall_command(uv: str) -> list[str]:
+    """Removes the tool LoomAI was installed as before the rename (the new one brings `daddy` back)."""
+    return [uv, "tool", "uninstall", "daddy-cli"]
+
+
 def install_command(uv: str) -> list[str]:
-    return [uv, "tool", "install", "--force", "--reinstall", "--quiet", os.environ.get("DADDY_SOURCE", SOURCE)]
+    return [uv, "tool", "install", "--force", "--reinstall", "--quiet", os.environ.get("LOOM_SOURCE", SOURCE)]

@@ -1,10 +1,10 @@
 [project]
-name = "daddy-server"
+name = "loom-server"
 version = "0.1.0"
-description = "Daddy AI: central gateway, project knowledge and delivery service for a team's AI agents"
+description = "LoomAI: central gateway, project knowledge and delivery service for a team's AI agents"
 requires-python = ">=3.12"
 dependencies = [
-    "daddy-common",
+    "loom-common",
     "fastapi>=0.115",
     "uvicorn[standard]>=0.32",
     "psycopg[binary,pool]>=3.2",
@@ -16,10 +16,10 @@ dependencies = [
 ]
 
 [project.scripts]
-daddy-server = "daddy_server.main:run"
+loom-server = "loom_server.main:run"
 
 [tool.uv.sources]
-daddy-common = { workspace = true }
+loom-common = { workspace = true }
 
 [build-system]
 requires = ["hatchling"]

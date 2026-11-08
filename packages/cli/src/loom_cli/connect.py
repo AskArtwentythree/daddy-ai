@@ -1,4 +1,4 @@
-"""``daddy connect``: register the local MCP server with Cursor, Claude Code and the Claude desktop app."""
+"""``loom connect``: register the local MCP server with Cursor, Claude Code and the Claude desktop app."""
 
 from __future__ import annotations
 
@@ -11,15 +11,15 @@ import sys
 import time
 from pathlib import Path
 
-from daddy_common.version import CLI_VERSION
+from loom_common.version import CLI_VERSION
 
 from .config import home_dir
 
 RULE = """---
-description: Daddy AI, the team's shared project brain
+description: LoomAI, the team's shared project brain
 alwaysApply: true
 ---
-This project is connected to Daddy AI (MCP server "daddy").
+This project is connected to LoomAI (MCP server "loom").
 - For questions about this project's code, decisions, docs or teammates, call `ask_project`
   and cite its sources. If it says "Not in project knowledge.", say so instead of guessing.
 - To share a file, skill or message with a teammate, call `send_to_teammate`.
@@ -29,19 +29,22 @@ This project is connected to Daddy AI (MCP server "daddy").
 """
 
 
+LEGACY_NAME = "daddy"  # LoomAI's name before the rename; its old connections are replaced
+
+
 def executable() -> str:
-    """Absolute path of this ``daddy`` command, so agents can launch it without a PATH."""
+    """Absolute path of this ``loom`` command, so agents can launch it without a PATH."""
     argv0 = Path(sys.argv[0])
-    if argv0.name == "daddy" and argv0.exists():
-        return str(argv0.absolute())
-    found = shutil.which("daddy")
+    if argv0.name in ("loom", "daddy") and argv0.with_name("loom").exists():
+        return str(argv0.with_name("loom").absolute())
+    found = shutil.which("loom")
     if found is None:
-        raise RuntimeError("Cannot find the `daddy` executable; install the CLI first")
+        raise RuntimeError("Cannot find the `loom` executable; install the CLI first")
     return found
 
 
 def custom_home() -> str | None:
-    default = Path.home() / ".daddy"
+    default = Path.home() / ".loom"
     return None if home_dir() == default else str(home_dir())
 
 
@@ -57,27 +60,30 @@ def _write_json(path: Path, data: dict) -> None:
 
 
 def mcp_entry(project_dir: Path | None = None) -> dict:
-    """The MCP server entry; the version in it changes with each update, which makes Cursor reload Daddy."""
-    env = {"DADDY_CLI_VERSION": CLI_VERSION}
+    """The MCP server entry; the version in it changes with each update, which makes Cursor reload Loom."""
+    env = {"LOOM_CLI_VERSION": CLI_VERSION}
     if home := custom_home():
-        env["DADDY_HOME"] = home
+        env["LOOM_HOME"] = home
     if project_dir is not None:
-        env["DADDY_WORKSPACE"] = str(project_dir.resolve())
+        env["LOOM_WORKSPACE"] = str(project_dir.resolve())
     return {"command": executable(), "args": ["mcp"], "env": env}
 
 
 def connect_cursor(project_dir: Path | None, hooks: bool) -> list[str]:
-    """Add Daddy AI to Cursor; returns a description of each change made."""
+    """Add LoomAI to Cursor; returns a description of each change made."""
     changes = []
     base = project_dir.resolve() / ".cursor" if project_dir else Path.home() / ".cursor"
     mcp_path = base / "mcp.json"
     config = _load_json(mcp_path)
-    config.setdefault("mcpServers", {})["daddy"] = mcp_entry(project_dir)
+    servers = config.setdefault("mcpServers", {})
+    servers.pop(LEGACY_NAME, None)
+    servers["loom"] = mcp_entry(project_dir)
     _write_json(mcp_path, config)
-    changes.append(f"MCP server 'daddy' → {mcp_path}")
+    changes.append(f"MCP server 'loom' → {mcp_path}")
 
     if project_dir is not None:
-        rule_path = base / "rules" / "daddy-ai.mdc"
+        (base / "rules" / "daddy-ai.mdc").unlink(missing_ok=True)
+        rule_path = base / "rules" / "loom-ai.mdc"
         rule_path.parent.mkdir(parents=True, exist_ok=True)
         rule_path.write_text(RULE)
         changes.append(f"Agent rule → {rule_path}")
@@ -90,7 +96,7 @@ def connect_cursor(project_dir: Path | None, hooks: bool) -> list[str]:
 def _hook_command(name: str) -> str:
     command = f"{shlex.quote(executable())} hook {name}"
     if home := custom_home():
-        command = f"DADDY_HOME={shlex.quote(home)} {command}"
+        command = f"LOOM_HOME={shlex.quote(home)} {command}"
     return command
 
 
@@ -99,7 +105,7 @@ def _is_ours(command: str) -> bool:
 
 
 def install_cursor_hooks(path: Path) -> str:
-    """Merge Daddy AI's prompt guard, agent guard and audit hooks into a Cursor ``hooks.json``."""
+    """Merge LoomAI's prompt guard, agent guard and audit hooks into a Cursor ``hooks.json``."""
     config = _load_json(path)
     config.setdefault("version", 1)
     all_hooks = config.setdefault("hooks", {})
@@ -144,8 +150,8 @@ def install_claude_code_hooks(path: Path | None = None) -> str:
 def claude_command() -> list[str]:
     command = ["claude", "mcp", "add", "--scope", "user"]
     if home := custom_home():
-        command += ["-e", f"DADDY_HOME={home}"]
-    return [*command, "daddy", "--", executable(), "mcp"]
+        command += ["-e", f"LOOM_HOME={home}"]
+    return [*command, "loom", "--", executable(), "mcp"]
 
 
 def _claude_code() -> str | None:
@@ -164,16 +170,17 @@ def connect_claude() -> tuple[bool, str]:
     command = claude_command()
     if claude is None:
         return False, "Claude Code is not installed here. Once it is, run:\n  " + shlex.join(command)
-    subprocess.run(
-        [claude, "mcp", "remove", "--scope", "user", "daddy"],
-        check=False,
-        capture_output=True,
-        env=os.environ,
-    )
+    for name in ("loom", LEGACY_NAME):
+        subprocess.run(
+            [claude, "mcp", "remove", "--scope", "user", name],
+            check=False,
+            capture_output=True,
+            env=os.environ,
+        )
     result = subprocess.run([claude, *command[1:]], check=False, capture_output=True, text=True)
     if result.returncode != 0:
         return False, f"`claude mcp add` failed: {result.stderr.strip() or result.stdout.strip()}"
-    return True, f"MCP server 'daddy' added to Claude Code (user scope); {install_claude_code_hooks()}"
+    return True, f"MCP server 'loom' added to Claude Code (user scope); {install_claude_code_hooks()}"
 
 
 def claude_desktop_config() -> Path:
@@ -185,17 +192,17 @@ def claude_desktop_config() -> Path:
 
 
 def connect_claude_desktop() -> tuple[str, bool]:
-    """Add Daddy AI to the Claude desktop app's config; returns (message, changed).
+    """Add LoomAI to the Claude desktop app's config; returns (message, changed).
 
     The app only reads this file at startup, so a change needs a restart (see `restart_claude_desktop`).
     """
     path = claude_desktop_config()
     config = _load_json(path)
     servers = config.setdefault("mcpServers", {})
-    changed = servers.get("daddy") != mcp_entry()
-    servers["daddy"] = mcp_entry()
+    changed = servers.pop(LEGACY_NAME, None) is not None or servers.get("loom") != mcp_entry()
+    servers["loom"] = mcp_entry()
     _write_json(path, config)
-    return f"MCP server 'daddy' → {path}", changed
+    return f"MCP server 'loom' → {path}", changed
 
 
 def claude_desktop_running() -> bool:
@@ -223,9 +230,9 @@ def restart_claude_desktop() -> bool:
 
 
 def connected_agents() -> list[str]:
-    """Apps already pointed at this Daddy connection: they pick up a new team without a restart."""
+    """Apps already pointed at this Loom connection: they pick up a new team without a restart."""
     def identity(env: dict) -> dict:
-        return {k: v for k, v in env.items() if k != "DADDY_CLI_VERSION"}
+        return {k: v for k, v in env.items() if k != "LOOM_CLI_VERSION"}
 
     entry = mcp_entry()
     places = {
@@ -236,16 +243,16 @@ def connected_agents() -> list[str]:
     found = []
     for app, path in places.items():
         try:
-            daddy = _load_json(path).get("mcpServers", {}).get("daddy") or {}
+            loom = _load_json(path).get("mcpServers", {}).get("loom") or {}
         except (OSError, ValueError):
             continue
-        if daddy.get("command") == entry["command"] and identity(daddy.get("env", {})) == identity(entry["env"]):
+        if loom.get("command") == entry["command"] and identity(loom.get("env", {})) == identity(entry["env"]):
             found.append(app)
     return found
 
 
 def detect_agents() -> list[str]:
-    """Agents installed on this computer, in the names `daddy connect` accepts."""
+    """Agents installed on this computer, in the names `loom connect` accepts."""
     found = []
     if (Path.home() / ".cursor").is_dir() or Path("/Applications/Cursor.app").exists() or shutil.which("cursor"):
         found.append("cursor")

@@ -33,7 +33,7 @@ def install(item: dict, content: str | bytes, config: Config, project_dir: Path 
 
     Skills go into every configured skills folder (Cursor and Claude Code by default);
     files (text or binary, like photos and PDFs) go into the project folder when given,
-    otherwise into the Daddy inbox folder. Earlier versions are kept as ``.bak-<timestamp>`` files.
+    otherwise into the Loom inbox folder. Earlier versions are kept as ``.bak-<timestamp>`` files.
     """
     content = content.encode() if isinstance(content, str) else content
     kind = item["kind"]
