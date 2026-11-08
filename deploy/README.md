@@ -9,6 +9,22 @@ The diagram is [`docs/daddy-ai-aws-architecture.drawio`](../docs/daddy-ai-aws-ar
 > Never paste passwords, the bootstrap secret or a filled-in `.env` into chat, Slack, a commit or Daddy AI.
 > The server needs **no AWS access keys**: it uses the EC2 instance role.
 
+## Shortcut: one command
+
+[`deploy/aws/deploy.sh`](aws/deploy.sh) does steps 1–5 by itself. Run it from a laptop with AWS credentials loaded:
+
+```bash
+bash deploy/aws/deploy.sh
+```
+
+It creates the stack in [`deploy/aws/stack.yaml`](aws/stack.yaml): a VPC with NAT, an ALB, EC2 in a private subnet, RDS,
+an S3 bucket, the IAM role, and CloudFront. CloudFront gives you HTTPS on a free `*.cloudfront.net` address, so you don't
+need a domain or a certificate. The script then installs the committed code on the server through SSM; nobody needs SSH.
+Passwords stay in Secrets Manager, and the script prints the `daddy init` command at the end. Re-run it to deploy new
+commits. The stack is named `daddy-full`; set `STACK=...` to use another name.
+
+The manual steps below are still useful if you want to build the setup yourself.
+
 ## 1. Create the AWS resources
 
 Use **`us-east-1`** for everything: the hackathon account blocks every other region. All the Bedrock models below are
