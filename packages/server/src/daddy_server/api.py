@@ -208,6 +208,8 @@ def bootstrap(body: BootstrapBody) -> dict:
     with connection() as conn:
         exists = conn.execute("SELECT 1 FROM workspaces LIMIT 1").fetchone()
         secret_ok = settings.bootstrap_secret and body.secret == settings.bootstrap_secret
+        if settings.bootstrap_secret and not secret_ok:
+            raise PolicyDenied("Creating a family on this server requires the bootstrap secret")
         if exists and not secret_ok:
             raise PolicyDenied("A family already exists; ask its admin for an invite")
         workspace_id = conn.execute(

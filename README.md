@@ -118,6 +118,7 @@ DADDY_GUARDRAIL_ID=…                 # optional Bedrock Guardrail on everythin
 ```
 
 Changing the embedding model requires re-ingesting, because vectors from different models are not comparable.
+The AWS setup (what to ask the AWS team, the IAM policy and the switch-over steps) is in [`docs/AWS.md`](docs/AWS.md).
 
 ## Development
 
