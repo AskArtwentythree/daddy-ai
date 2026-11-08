@@ -42,7 +42,7 @@ already enabled there (tested: embeddings, rerank, Claude Haiku 4.5 and Sonnet 4
 | **ACM certificate** | For the hostname you will use, for example `loom.<your-domain>`. |
 | **ALB** | Internet-facing, public subnets, SG `loom-alb`. Listener **443** HTTPS with the ACM cert, and listener 80 redirecting to 443. Target group: HTTP port **8787**, target = the EC2 instance, health check path **`/api/health`**. |
 | **DNS** | Point the hostname at the ALB (Route 53 alias or a CNAME). |
-| **Guardrail** (optional) | A Bedrock Guardrail that blocks credentials and PII. |
+| **Guardrail** (optional) | A Bedrock Guardrail that blocks credentials and PII, plus the `PROMPT_ATTACK` content filter on input. On a running server, put `LOOM_GUARDRAIL_ID=…` and `LOOM_GUARDRAIL_VERSION=…` in `/etc/loom/server.env` (redeploys never touch that file) and restart the service. |
 
 ## 2. Put the code on the instance
 
