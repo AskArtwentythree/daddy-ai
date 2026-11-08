@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from daddy_cli import connect
+from daddy_cli import connect, watch
 from daddy_cli.config import Config
 from daddy_cli.hooks import _snake
 from daddy_cli.installer import install
@@ -76,3 +76,39 @@ def test_connect_cursor_merges_existing_config(tmp_path, monkeypatch):
     hooks = json.loads((cursor / "hooks.json").read_text())["hooks"]
     assert [h["command"] for h in hooks["stop"]] == ["mine", "/opt/daddy hook audit"]
     assert hooks["beforeSubmitPrompt"] == [{"command": "/opt/daddy hook prompt-check"}]
+
+
+class _FakeInbox:
+    def __init__(self, items: dict[str, dict]):
+        self.items = items
+        self.accepted: list[str] = []
+
+    def get(self, path, **params):
+        assert path == "/api/inbox"
+        return [i for i in reversed(self.items.values()) if i["id"] not in self.accepted]
+
+    def post(self, path):
+        delivery_id = path.split("/")[3]
+        self.accepted.append(delivery_id)
+        return self.items[delivery_id]
+
+
+def test_watch_opens_messages_and_files_without_accept(tmp_path, monkeypatch):
+    monkeypatch.setattr(watch, "notify", lambda *a: None)
+    item = {"project": "app", "from": "Patrick", "note": "", "install_path": None}
+    inbox = _FakeInbox(
+        {
+            "1": item | {"id": "1", "kind": "message", "filename": "message.txt", "content": "Hello world"},
+            "2": item | {"id": "2", "kind": "file", "filename": "plan.md", "content": "# Plan"},
+        }
+    )
+    lines: list[str] = []
+    watcher = watch.Watcher(_config(tmp_path), lines.append)
+    watcher.client = inbox
+
+    watcher.handle({"type": "hello", "user": "Sri", "device": "mac"})
+    watcher.handle({"type": "hello", "user": "Sri", "device": "mac"})
+
+    assert inbox.accepted == ["1", "2"]
+    assert "💬 Patrick [app]: Hello world" in lines
+    assert (tmp_path / "inbox" / "Patrick" / "plan.md").read_text() == "# Plan"
