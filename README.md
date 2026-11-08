@@ -10,7 +10,7 @@ to one live audit log.
 *Agent Harness: Secure and Manage Agent Activity*, and the AWS main track · **Team:** Askar, Anders, Patrick, Will,
 Sean and Sri
 
-![The LoomAI dashboard for a demo team: questions answered, deliveries, stopped actions and agents at work](docs/images/hero.png)
+![The LoomAI dashboard for a demo team: someone waiting at the door, the ask bar, and the last 24 hours of questions, deliveries, stopped actions and agents](docs/images/hero.png)
 
 ## Why
 
@@ -32,10 +32,10 @@ first and share through LoomAI, and every request is checked and recorded.
 | runs `git push --force` or calls `github.delete_repo` | asks the person first |
 | does anything else | lets it run and records it in the ledger |
 
-![The ledger filtered to stopped actions: a .env read, rm -rf, a password in a message, and a skill blocked by Bedrock Guardrails as a prompt attack](docs/images/ledger.png)
+![The activity feed filtered to stopped actions: a .env read, rm -rf, a password in a message, and a skill blocked by Bedrock Guardrails as a prompt attack](docs/images/ledger.png)
 
-*Every agent, on every computer, in one tree, and every action they took. Here the ledger is filtered to what was
-stopped: one block happened on the laptop, one at the gateway, and one inside Bedrock Guardrails.*
+*Every action from every agent in the team, live. Here the feed is filtered to what was stopped: blocks on the
+laptop, at the gateway, and inside Bedrock Guardrails.*
 
 ## How it fits the tracks
 
@@ -101,12 +101,14 @@ Then:
 
 ## Screenshots
 
-| Letting people in and inviting them | A project's people and the house rules |
+| The team, who's waiting and open invites | Making a team link |
 | --- | --- |
-| ![Waiting at the door with a join request, and a ready-to-paste team link](docs/images/door.png) | ![The Storefront project opened to show its members and roles, next to the house rules](docs/images/projects.png) |
+| ![The Team page: a join request waiting, members with their computers and agents, and open invites](docs/images/team.png) | ![The invite dialog with a ready-to-paste team link message](docs/images/door.png) |
+| **A project's people** | |
+| ![The Storefront project's People tab: roles to change, people to remove or add](docs/images/projects.png) | |
 
-The screenshots show a demo team with made-up people. LoomAI calls a team a *family*, so you'll see that word in
-the dashboard and the CLI.
+The screenshots show a demo team with made-up people. Dashboard design by Sean. In the CLI, LoomAI still calls a
+team a *family* in a few places.
 
 ---
 
@@ -366,15 +368,18 @@ Access is per project: an agent only sees projects its user belongs to.
 loom dashboard
 ```
 
-This opens the team's ledger (the page calls it *the family ledger*) in your browser with a one-time login link that expires after two minutes, so the CLI's token never reaches the browser.
+This opens the team dashboard in your browser with a one-time login link that expires after two minutes, so the CLI's token never reaches the browser.
 
-- **Figures:** questions answered, deliveries, actions stopped and active agents over the last 24 hours.
-- **Family tree:** LoomAI at the root, then each member, their computers, and the agents seen on each computer. Admins can revoke a computer from here.
-- **Ledger:** a live, filterable record of every agent action, with blocked actions shown in red and the reason for each block.
-- **Waiting at the door and Invite people:** let in or turn away people who used a team link; make a personal invite or
-  a team link and copy a message with the install line; see who each open invite is for and cancel it.
-- **Projects and house rules:** what each project holds, and the policies enforced on every call. Create a project, and
-  click one to see its people, change their roles, remove them, or add someone who's already in the team.
+- **Home:** who's waiting at the door (let them in or turn them away), an ask bar, the last 24 hours in figures, and recent activity.
+- **Ask the brain** (`Ctrl K` anywhere): answers from your projects with clickable sources.
+- **Activity:** a live feed of every agent action, filterable by stopped, deliveries, knowledge or person, with the
+  reason for each block; the *Technical log* tab shows the raw decision, latency and detail of each request.
+- **Team:** everyone, their computers and the agents seen on each (revoke a computer here), plus open invites to cancel.
+- **+ Invite:** a personal invite or a team link, with a ready-to-paste message.
+- **Inbox:** what teammates sent you. Messages open here; skills and files show the `loom accept` line to run.
+- **Projects:** each project's brief, files and a project-only ask bar. The *People* tab changes roles, removes people
+  and adds teammates; *New project* in the sidebar starts one.
+- **House rules:** the policies the gateway enforces, including the team's own guard rules.
 
 ## Running your own server (optional)
 
