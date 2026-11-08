@@ -4,6 +4,8 @@ Daddy AI runs fully local today. Moving to AWS means switching environment varia
 no code changes are needed. This page covers what we need from the AWS team, why, and
 what to send back.
 
+**Step-by-step deployment, with every value to fill in, is in [`deploy/README.md`](../deploy/README.md).**
+
 ## What runs where
 
 | Piece | Local today | On AWS |
@@ -120,24 +122,7 @@ If they use a customer-managed KMS key instead of `aws/s3`, also add `kms:Genera
 
 ## Switching over
 
-On the EC2 instance, in the cloned repo:
-
-```bash
-cat > .env <<'EOF'
-DADDY_HOST=0.0.0.0
-DADDY_DATABASE_URL=postgresql://…
-DADDY_S3_BUCKET=…
-DADDY_AWS_REGION=us-west-2
-DADDY_EMBEDDING_PROVIDER=bedrock
-DADDY_RERANK_PROVIDER=bedrock
-DADDY_LLM_PROVIDER=bedrock
-DADDY_BOOTSTRAP_SECRET=…        # required: the server is reachable by others
-EOF
-uv sync && uv run daddy-server
-```
-
-Then:
-1. Create the family: `daddy init --server https://… --secret …`.
-2. Re-ingest the projects. Bedrock vectors aren't comparable with the local ones, so this is required.
-3. Re-issue invites, because the cloud database starts empty.
-4. Check with `uv run python scripts/mcp_smoke.py` and `daddy ask "…"`. A grounded answer with sources means embeddings, rerank and Claude all work.
+Follow [`deploy/README.md`](../deploy/README.md). It covers filling in `.env` from `deploy/.env.aws.example`,
+running `deploy/setup-ec2.sh` (which installs the server as a systemd service), and the handover to Askar.
+Askar then re-creates the family, re-ingests the projects (Bedrock vectors aren't comparable with the local ones)
+and re-issues invites, because the cloud database starts empty.
