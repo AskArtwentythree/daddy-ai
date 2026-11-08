@@ -165,7 +165,7 @@ function renderTree(data) {
     .join("");
   $("#tree").innerHTML = `
     <div class="root">
-      <span class="seal">D</span>
+      <span class="seal">L</span>
       <strong>LoomAI</strong>
       <span class="root-note">memory · policy · delivery</span>
     </div>
