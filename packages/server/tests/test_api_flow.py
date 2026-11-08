@@ -178,3 +178,38 @@ def test_rename(api, monkeypatch):
     renames = [e for e in api.get("/api/audit", headers=auth(ana)).json() if e["action"] == "user.rename"]
     assert [e["detail"] for e in renames if e["decision"] == "allow"] == [{"old": "Ben", "new": "Benjamin Stone"}]
     assert sum(e["decision"] != "allow" for e in renames) == 2
+
+
+def test_photos_and_pdfs_travel_byte_for_byte(api, monkeypatch):
+    import base64
+
+    from daddy_server.config import get_settings
+
+    pia = _new_family(api, monkeypatch, "Photo Team", "Pia")
+    api.post("/api/projects", json={"name": "Pics"}, headers=auth(pia))
+    link = api.post("/api/invites", headers=auth(pia), json={"project": "pics", "max_uses": 1}).json()["code"]
+    body = {"code": link, "device_name": "d", "email": "quinn@example.com", "display_name": "Quinn"}
+    quinn = api.post("/api/join", json=body).json()["token"]
+
+    photo = b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 400
+    encoded = base64.b64encode(photo).decode()
+
+    def send(**fields):
+        return api.post("/api/send", headers=auth(pia), json={"project": "pics", "to": "Quinn", **fields})
+
+    sent = send(filename="cat.png", content_base64=encoded).json()["delivery"]
+    assert sent["size_bytes"] == len(photo)
+    assert send(filename="cat.png", content_base64=encoded, kind="skill").status_code == 400
+    assert send(filename="cat.png", content_base64="not base64!").status_code == 400
+    assert send(filename="cat.png", content="x", content_base64=encoded).status_code == 400
+    assert send(filename="cert.p12", content_base64=encoded).status_code == 403
+
+    monkeypatch.setenv("DADDY_MAX_ARTIFACT_BYTES", "1000")
+    get_settings.cache_clear()
+    too_big = send(filename="cat.png", content_base64=encoded)
+    monkeypatch.delenv("DADDY_MAX_ARTIFACT_BYTES")
+    get_settings.cache_clear()
+    assert too_big.status_code == 400 and "the limit is 1 KB" in too_big.json()["reason"]
+
+    accepted = api.post(f"/api/inbox/{sent['id']}/accept", headers=auth(quinn)).json()
+    assert "content" not in accepted and base64.b64decode(accepted["content_base64"]) == photo

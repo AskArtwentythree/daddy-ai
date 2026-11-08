@@ -159,7 +159,8 @@ class SendBody(BaseModel):
     project: str
     to: str
     filename: str
-    content: str
+    content: str = ""
+    content_base64: str | None = None
     kind: Literal["file", "skill", "message"] = "file"
     note: str = ""
     install_path: str | None = None
@@ -600,7 +601,7 @@ def send(body: SendBody, actor: Actor = Depends(require_actor)) -> dict:
         project = _project(conn, actor, body.project, scope)
         return delivery.send(conn, actor, project, to=body.to, filename=body.filename,
                              content=body.content, kind=body.kind, note=body.note,
-                             install_path=body.install_path)
+                             install_path=body.install_path, content_base64=body.content_base64)
 
 
 @app.get("/api/inbox")

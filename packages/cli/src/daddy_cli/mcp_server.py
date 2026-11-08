@@ -20,6 +20,7 @@ import anyio
 from mcp.server.mcpserver import Context, MCPServer
 from mcp.shared.exceptions import MCPDeprecationWarning
 
+from daddy_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
 from daddy_common.secrets import is_sensitive_path, scan_text
 
 from . import render
@@ -166,7 +167,8 @@ async def send_to_teammate(
     """Send a file, an agent skill or a short message to a teammate's inbox.
 
     to: teammate's name or email.
-    path: a local file to send (relative to the open workspace); or pass content + filename.
+    path: a local file to send (relative to the open workspace). Any file type works, including
+    photos, PDFs and archives, up to 25 MB. Or pass text as content + filename.
     kind: "skill" installs into the teammate's agent skills folders, "file" into their inbox
     folder, "message" is text only.
     Credentials and files containing secrets are blocked before they leave this computer.
@@ -178,15 +180,21 @@ async def send_to_teammate(
             file_path = await _workspace_root(ctx) / file_path
         if not file_path.is_file():
             return f"File not found: {file_path}"
-        content = file_path.read_text(errors="replace")
+        if (size := file_path.stat().st_size) > MAX_DELIVERY_BYTES:
+            return f"{file_path.name} is {describe_size(size)}; the limit is {describe_size(MAX_DELIVERY_BYTES)}."
+        payload = to_payload(file_path.read_bytes())
+        if "content_base64" in payload and kind != "file":
+            return f'{file_path.name} is not a text file, so send it with kind "file".'
         filename = filename or (
             str(Path(file_path.parent.name) / file_path.name) if kind == "skill" else file_path.name
         )
-    if content is None:
+    elif content is not None:
+        payload = {"content": content}
+    else:
         return "Provide either path or content."
     filename = filename or ("message.txt" if kind == "message" else "shared.txt")
 
-    findings = scan_text(content) + scan_text(note)
+    findings = scan_text(payload.get("content", "")) + scan_text(note)
     if is_sensitive_path(filename) or findings:
         reason = "credential file" if is_sensitive_path(filename) else "; ".join(f.describe() for f in findings[:3])
         with contextlib.suppress(DaddyError):
@@ -211,7 +219,7 @@ async def send_to_teammate(
                     "project": client.resolve_project(project),
                     "to": to,
                     "filename": filename,
-                    "content": content,
+                    **payload,
                     "kind": kind,
                     "note": note,
                 },
@@ -251,7 +259,7 @@ async def accept_delivery(
     except DaddyError as error:
         return _failure(error)
     project_dir = await _workspace_root(ctx) if destination == "workspace" else None
-    written = install(item, item["content"], client.config, project_dir)
+    written = install(item, from_payload(item), client.config, project_dir)
     if item["kind"] == "message":
         return f"Message from {item['from']}:\n{item['content']}"
     where = "\n".join(f"- {p}" for p in written)

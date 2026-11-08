@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import base64
+import binascii
 import hashlib
 import re
 from pathlib import PurePosixPath
@@ -9,6 +11,7 @@ from uuid import UUID
 
 import psycopg
 
+from daddy_common.files import as_text, describe_size, to_payload
 from daddy_common.secrets import is_sensitive_path, scan_text
 
 from .auth import Actor
@@ -67,6 +70,17 @@ def _validate_install_path(path: str | None) -> str | None:
     return str(pure)
 
 
+def _payload(content: str, content_base64: str | None) -> bytes:
+    if content_base64 is None:
+        return content.encode()
+    if content:
+        raise InvalidRequest("Send either content or content_base64, not both")
+    try:
+        return base64.b64decode(content_base64, validate=True)
+    except binascii.Error as error:
+        raise InvalidRequest("content_base64 is not valid base64") from error
+
+
 def send(
     conn: psycopg.Connection,
     actor: Actor,
@@ -78,12 +92,17 @@ def send(
     kind: str,
     note: str,
     install_path: str | None,
+    content_base64: str | None = None,
 ) -> dict:
     if kind not in KINDS:
         raise InvalidRequest(f"kind must be one of {KINDS}")
-    data = content.encode()
-    if len(data) > get_settings().max_artifact_bytes:
-        raise InvalidRequest("Artifact is larger than the 1 MB limit")
+    data = _payload(content, content_base64)
+    limit = get_settings().max_artifact_bytes
+    if len(data) > limit:
+        raise InvalidRequest(f"{filename} is {describe_size(len(data))}; the limit is {describe_size(limit)}")
+    text = as_text(data)
+    if text is None and kind != "file":
+        raise InvalidRequest("Only files can be binary; skills and messages must be text")
 
     recipient = _find_member(conn, actor, to)
     recipient_role = conn.execute(
@@ -97,10 +116,10 @@ def send(
         recipient_role=recipient_role["role"] if recipient_role else None,
         recipient_is_sender=recipient["id"] == actor.user_id,
         sensitive_path=is_sensitive_path(filename),
-        findings=scan_text(content) + scan_text(note),
+        findings=scan_text(text or "") + scan_text(note),
     )
     if reason is None and (guardrail := get_guardrail()):
-        reason = guardrail.check(f"{note}\n\n{content}")
+        reason = guardrail.check(f"{note}\n\n{text or ''}")
     if reason:
         raise PolicyDenied(f"Not sent to {recipient['display_name']}: {reason}")
 
@@ -187,7 +206,7 @@ def accept(conn: psycopg.Connection, actor: Actor, delivery_id: UUID) -> dict:
     row = _own_delivery(conn, actor, delivery_id)
     if row["status"] == "declined":
         raise InvalidRequest("This item was declined")
-    content = get_blob_store().get(row["blob_key"]).decode()
+    payload = to_payload(get_blob_store().get(row["blob_key"]))
     conn.execute(
         "UPDATE deliveries SET status = 'accepted', acted_at = coalesce(acted_at, now()) WHERE id = %s",
         (delivery_id,),
@@ -195,7 +214,7 @@ def accept(conn: psycopg.Connection, actor: Actor, delivery_id: UUID) -> dict:
     conn.commit()
     item = _item(row) | {"status": "accepted"}
     bus.to_user(row["sender_id"], {"type": "delivery.accepted", "delivery": item, "by": actor.display_name})
-    return item | {"content": content}
+    return item | payload
 
 
 def decline(conn: psycopg.Connection, actor: Actor, delivery_id: UUID) -> dict:

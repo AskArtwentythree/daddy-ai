@@ -74,7 +74,7 @@ There are no commands to learn. Once connected, your agent sees Daddy AI's tools
 | "What did we decide about the database?" | Finds the decision in docs and saved notes |
 | "Send the release checklist skill to Sri" | Secret check, then it installs itself into Sri's Cursor and Claude Code |
 | "Send Sri a message: the header needs fixing" | It pops up in Sri's `daddy watch` window with a notification |
-| "Send this file to Sri" | Saved to Sri's `~/Daddy/inbox/<you>/` |
+| "Send this file to Sri" | Any file up to 25 MB (code, photos, PDFs, zips), saved to Sri's `~/Daddy/inbox/<you>/` |
 | "Did anyone send me anything?" | Your inbox |
 | "Remember for the team: we freeze code on Wednesdays" | A note every teammate's agent can find right away |
 | "Daddy, change my name to Alex" | Teammates now see you, and send to you, as Alex |
@@ -92,7 +92,7 @@ You rarely need these, but they're there:
 | `daddy watch` | Live window for messages, files and skills (the installer opens it for you) |
 | `daddy dashboard` | Opens the team dashboard in your browser |
 | `daddy ask "…"` | Ask from the terminal instead of through an agent |
-| `daddy send Sri ./notes.md` | Send a file, a skill (`SKILL.md`) or `--message "…"` |
+| `daddy send Sri ./design.png` | Send any file up to 25 MB, a skill (`SKILL.md`) or `--message "…"` |
 | `daddy project create "Name"` | A new project; you become its owner |
 | `daddy project add-member my-app sri@example.com` | Give someone already in the team access to a project |
 | `daddy invite -p my-app` | One team link for your chat (or `daddy invite sri@example.com -n Sri` for one person) |
@@ -155,7 +155,7 @@ Controls for the Agent Harness track:
 - **Identity**: one revocable token per device, and the agent's name (Cursor, Claude) is recorded per call.
 - **Policy**: owner, member and viewer roles per project. The permission join sits inside the retrieval SQL, so another project's chunks are never even scored.
 - **Isolation**: every team on the hosted server is a separate family. Projects, people, deliveries, the audit log and the dashboard are all scoped to it; another team can't search, see or message yours.
-- **Secret scanning**: runs on the laptop before upload or send, again on the server, and optionally through a Bedrock Guardrail.
+- **Secret scanning**: runs on the laptop before upload or send, again on the server, and optionally through a Bedrock Guardrail. The contents of text files are scanned; binary files (photos, PDFs) are not looked inside, but credential files like `.p12` or `id_rsa` are blocked by name either way.
 - **Prompt guard**: a Cursor `beforeSubmitPrompt` hook blocks prompts containing secrets before they reach any model.
 - **Audit**: every allow, deny and error with latency, streamed live to admins (`daddy audit -f`).
 

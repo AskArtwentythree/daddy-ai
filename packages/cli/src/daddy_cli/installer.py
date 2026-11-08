@@ -19,22 +19,23 @@ def _safe_join(base: Path, relative: str) -> Path:
     return target
 
 
-def _write(target: Path, content: str) -> Path:
+def _write(target: Path, data: bytes) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
-    if target.exists() and target.read_text(errors="replace") != content:
+    if target.exists() and target.read_bytes() != data:
         backup = target.with_name(f"{target.name}.bak-{datetime.now():%Y%m%d-%H%M%S}")
         target.rename(backup)
-    target.write_text(content)
+    target.write_bytes(data)
     return target
 
 
-def install(item: dict, content: str, config: Config, project_dir: Path | None = None) -> list[Path]:
+def install(item: dict, content: str | bytes, config: Config, project_dir: Path | None = None) -> list[Path]:
     """Place an accepted delivery where its kind belongs and return the written paths.
 
     Skills go into every configured skills folder (Cursor and Claude Code by default);
-    files go into the project folder when given, otherwise into the Daddy inbox folder.
-    Earlier versions are kept as ``.bak-<timestamp>`` files.
+    files (text or binary, like photos and PDFs) go into the project folder when given,
+    otherwise into the Daddy inbox folder. Earlier versions are kept as ``.bak-<timestamp>`` files.
     """
+    content = content.encode() if isinstance(content, str) else content
     kind = item["kind"]
     if kind == "message":
         return []

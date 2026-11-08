@@ -145,3 +145,13 @@ def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
 
     alive["ok"] = False
     assert runner.invoke(main.app, ["join", "inv_y"]).exit_code == 0
+
+
+def test_photos_are_saved_byte_for_byte(tmp_path):
+    photo = b"\x89PNG\r\n\x1a\n\x00\xff" * 100
+    item = {"kind": "file", "filename": "cat.png", "from": "Pia"}
+    [written] = install(item, photo, _config(tmp_path))
+    assert written.read_bytes() == photo
+    [again] = install(item, photo[:-1], _config(tmp_path))
+    assert again.read_bytes() == photo[:-1]
+    assert len(list(written.parent.glob("cat.png.bak-*"))) == 1

@@ -4,6 +4,8 @@ from typing import Literal
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from daddy_common.files import MAX_DELIVERY_BYTES
+
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="DADDY_", env_file=".env", extra="ignore")
@@ -45,7 +47,7 @@ class Settings(BaseSettings):
     history_window_minutes: int = 30
 
     max_file_bytes: int = 400_000
-    max_artifact_bytes: int = 1_000_000
+    max_artifact_bytes: int = MAX_DELIVERY_BYTES
 
     bootstrap_secret: str | None = None
     # Hosted mode: anyone may start a new family without the secret. Families never see each other's data.

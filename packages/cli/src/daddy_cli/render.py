@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from daddy_common.files import describe_size
+
 
 def status(me: dict, server_url: str) -> str:
     lines = [
@@ -57,7 +59,9 @@ def inbox(items: list[dict]) -> str:
     if not items:
         return "Inbox is empty."
     return "\n".join(
-        f"- {item['id']} · {item['kind']} '{item['filename']}' from {item['from']} "
-        f"(project {item['project']}, {item['status']})" + (f": {item['note']}" if item["note"] else "")
+        f"- {item['id']} · {item['kind']} '{item['filename']}'"
+        + ("" if item["kind"] == "message" else f" ({describe_size(item['size_bytes'])})")
+        + f" from {item['from']} (project {item['project']}, {item['status']})"
+        + (f": {item['note']}" if item["note"] else "")
         for item in items
     )

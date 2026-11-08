@@ -16,6 +16,7 @@ from urllib.parse import urlparse
 
 import typer
 
+from daddy_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
 from daddy_common.ignore import skip_reason
 from daddy_common.secrets import is_sensitive_path, scan_text
 
@@ -455,18 +456,22 @@ def send(
     note: Annotated[str, typer.Option(help="Note for the recipient")] = "",
     project: ProjectOpt = None,
 ) -> None:
-    """Send a file, an agent skill (SKILL.md) or a message to a teammate's inbox."""
+    """Send a file (any kind: code, photos, PDFs…), an agent skill (SKILL.md) or a message to a teammate."""
     if path is None and message is None:
         _fail("Give a file path or --message.")
     if path is not None:
         if not path.is_file():
             _fail(f"No such file: {path}")
-        content = path.read_text()
+        if (size := path.stat().st_size) > MAX_DELIVERY_BYTES:
+            _fail(f"{path.name} is {describe_size(size)}; the limit is {describe_size(MAX_DELIVERY_BYTES)}.")
+        payload = to_payload(path.read_bytes())
         kind = kind or ("skill" if path.name == "SKILL.md" else "file")
+        if "content_base64" in payload and kind != "file":
+            _fail(f"{path.name} is not a text file, so it can only be sent as a file.")
         filename = f"{path.resolve().parent.name}/{path.name}" if kind == "skill" else path.name
     else:
-        content, kind, filename = message, "message", "message.txt"
-    findings = scan_text(content) + scan_text(note)
+        payload, kind, filename = {"content": message}, "message", "message.txt"
+    findings = scan_text(payload.get("content", "")) + scan_text(note)
     if is_sensitive_path(filename) or findings:
         reason = "credential file" if not findings else "; ".join(f.describe() for f in findings[:3])
         with contextlib.suppress(DaddyError):
@@ -488,12 +493,16 @@ def send(
             "project": _call(client.resolve_project, project),
             "to": to,
             "filename": filename,
-            "content": content,
+            **payload,
             "kind": kind,
             "note": note,
         },
     )
-    typer.secho(f"Sent {kind} '{result['delivery']['filename']}' to {result['recipient']}.", fg="green")
+    sent = result["delivery"]
+    typer.secho(
+        f"Sent {kind} '{sent['filename']}' ({describe_size(sent['size_bytes'])}) to {result['recipient']}.",
+        fg="green",
+    )
 
 
 @app.command()
@@ -515,7 +524,7 @@ def accept(
     if item["kind"] == "message":
         typer.echo(f"Message from {item['from']}:\n{item['content']}")
         return
-    for written in install(item, item["content"], config, to):
+    for written in install(item, from_payload(item), config, to):
         typer.echo(f"Installed → {written}")
 
 

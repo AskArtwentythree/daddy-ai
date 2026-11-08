@@ -12,6 +12,8 @@ from collections.abc import Callable
 
 import websockets
 
+from daddy_common.files import from_payload
+
 from .client import DaddyClient, DaddyError
 from .config import Config, home_dir
 from .installer import install
@@ -89,7 +91,7 @@ class Watcher:
             self.echo("   " + accepted["content"].replace("\n", "\n   "))
             notify(f"Message from {sender}", accepted["content"][:200])
             return
-        for path in install(accepted, accepted["content"], self.config):
+        for path in install(accepted, from_payload(accepted), self.config):
             self.echo(f"   saved → {path}")
         what = "Installed skill" if accepted["kind"] == "skill" else "Saved file"
         notify("Daddy AI", f"{what} '{accepted['filename']}' from {sender}")
