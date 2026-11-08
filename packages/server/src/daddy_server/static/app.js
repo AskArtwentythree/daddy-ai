@@ -103,6 +103,7 @@ function sparkline(svg, series) {
   const step = 120 / (series.length - 1);
   const points = series.map((v, i) => `${(i * step).toFixed(1)},${(26 - (v / max) * 24).toFixed(1)}`).join(" ");
   svg.innerHTML = `<line x1="0" y1="27.5" x2="120" y2="27.5"></line><polyline points="${points}"></polyline>`;
+  svg.classList.toggle("quiet", series.every((v) => v === 0));
 }
 
 async function loadStats() {
@@ -142,7 +143,10 @@ function deviceItem(device) {
 }
 
 function renderTree(data) {
+  const isFormer = (m) => m.devices.length > 0 && m.devices.every((d) => d.revoked_at);
+  const former = data.members.filter(isFormer);
   const members = data.members
+    .filter((m) => !isFormer(m))
     .map((member) => {
       const projects = member.projects.length;
       return `
@@ -162,7 +166,8 @@ function renderTree(data) {
       <strong>Daddy AI</strong>
       <span class="root-note">memory · policy · delivery</span>
     </div>
-    <ul class="branches">${members}</ul>`;
+    <ul class="branches">${members}</ul>
+    ${former.length ? `<p class="former">Revoked: ${former.map((m) => `<s>${esc(m.name)}</s>`).join(", ")}</p>` : ""}`;
 }
 
 function renderProjects(projects) {
@@ -276,7 +281,14 @@ function entryHtml(event, fresh) {
 }
 
 function renderLedger(freshId) {
-  const visible = state.events.filter((e) => !isNoise(e) && FILTERS[state.filter](e));
+  const meaningful = state.events.filter((e) => !isNoise(e));
+  for (const button of document.querySelectorAll("#filters button")) {
+    const n = meaningful.filter(FILTERS[button.dataset.filter]).length;
+    const count = button.querySelector(".count");
+    count.textContent = n ? n.toLocaleString() : "";
+    count.classList.toggle("alarm", button.dataset.filter === "stopped" && n > 0);
+  }
+  const visible = meaningful.filter(FILTERS[state.filter]);
   $("#ledger").innerHTML = visible.map((e) => entryHtml(e, e.id === freshId)).join("");
   $("#ledger-empty").hidden = visible.length > 0;
 }
@@ -340,6 +352,7 @@ $("#filters").addEventListener("click", (click) => {
   if (!button) return;
   state.filter = button.dataset.filter;
   for (const b of document.querySelectorAll("#filters button")) b.setAttribute("aria-pressed", String(b === button));
+  $("#ledger-empty").textContent = state.filter === "stopped" ? "Nothing stopped. All clear." : "Nothing here yet. Ask your agent something.";
   renderLedger();
 });
 

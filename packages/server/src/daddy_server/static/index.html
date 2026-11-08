@@ -39,7 +39,7 @@
         <h2 class="kicker">Questions answered</h2>
         <p class="number" id="n-questions">–</p>
         <svg class="spark" id="s-questions" viewBox="0 0 120 28" preserveAspectRatio="none"></svg>
-        <p class="caption">from project knowledge, last 24 h</p>
+        <p class="caption">from project knowledge, last 24&nbsp;h</p>
       </article>
       <article class="figure">
         <h2 class="kicker">Deliveries</h2>
@@ -56,7 +56,7 @@
       <article class="figure">
         <h2 class="kicker">Agents at work</h2>
         <p class="number" id="n-agents">–</p>
-        <p class="caption caption-tall">distinct agents that called Daddy in the last 24 h</p>
+        <p class="caption">distinct agents that called Daddy, last 24&nbsp;h</p>
       </article>
     </section>
 
@@ -78,10 +78,10 @@
         <header class="panel-head">
           <h2>Ledger</h2>
           <nav class="filters" id="filters" aria-label="Filter the ledger">
-            <button data-filter="all" aria-pressed="true">All</button>
-            <button data-filter="stopped">Stopped</button>
-            <button data-filter="deliveries">Deliveries</button>
-            <button data-filter="knowledge">Knowledge</button>
+            <button data-filter="all" aria-pressed="true">All <span class="count"></span></button>
+            <button data-filter="stopped">Stopped <span class="count"></span></button>
+            <button data-filter="deliveries">Deliveries <span class="count"></span></button>
+            <button data-filter="knowledge">Knowledge <span class="count"></span></button>
           </nav>
         </header>
         <ol id="ledger" class="ledger"></ol>
@@ -95,7 +95,7 @@
           <h2>Projects</h2>
           <p class="kicker">what the family knows</p>
         </header>
-        <table class="table">
+        <table class="table projects-table">
           <thead><tr><th>Project</th><th>Your role</th><th class="num">Members</th><th class="num">Files</th><th class="num">Passages</th></tr></thead>
           <tbody id="projects"></tbody>
         </table>
