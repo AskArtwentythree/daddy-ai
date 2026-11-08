@@ -1,4 +1,4 @@
-"""``daddy connect``: register the local MCP server with Cursor and Claude Code."""
+"""``daddy connect``: register the local MCP server with Cursor, Claude Code and the Claude desktop app."""
 
 from __future__ import annotations
 
@@ -122,18 +122,58 @@ def claude_command() -> list[str]:
     return [*command, "daddy", "--", executable(), "mcp"]
 
 
+def _claude_code() -> str | None:
+    found = shutil.which("claude")
+    if found:
+        return found
+    for candidate in (Path.home() / ".local" / "bin" / "claude", Path.home() / ".claude" / "local" / "claude"):
+        if candidate.exists():
+            return str(candidate)
+    return None
+
+
 def connect_claude() -> tuple[bool, str]:
     """Register with Claude Code; returns (done, message)."""
+    claude = _claude_code()
     command = claude_command()
-    if shutil.which("claude") is None:
+    if claude is None:
         return False, "Claude Code is not installed here. Once it is, run:\n  " + shlex.join(command)
     subprocess.run(
-        ["claude", "mcp", "remove", "--scope", "user", "daddy"],
+        [claude, "mcp", "remove", "--scope", "user", "daddy"],
         check=False,
         capture_output=True,
         env=os.environ,
     )
-    result = subprocess.run(command, check=False, capture_output=True, text=True)
+    result = subprocess.run([claude, *command[1:]], check=False, capture_output=True, text=True)
     if result.returncode != 0:
         return False, f"`claude mcp add` failed: {result.stderr.strip() or result.stdout.strip()}"
     return True, "MCP server 'daddy' added to Claude Code (user scope)"
+
+
+def claude_desktop_config() -> Path:
+    if sys.platform == "darwin":
+        return Path.home() / "Library" / "Application Support" / "Claude" / "claude_desktop_config.json"
+    if sys.platform == "win32":
+        return Path(os.environ.get("APPDATA", Path.home())) / "Claude" / "claude_desktop_config.json"
+    return Path.home() / ".config" / "Claude" / "claude_desktop_config.json"
+
+
+def connect_claude_desktop() -> str:
+    """Add Daddy AI to the Claude desktop app's config; it picks it up after a full restart."""
+    path = claude_desktop_config()
+    config = _load_json(path)
+    config.setdefault("mcpServers", {})["daddy"] = mcp_entry()
+    _write_json(path, config)
+    return f"MCP server 'daddy' → {path}"
+
+
+def detect_agents() -> list[str]:
+    """Agents installed on this computer, in the names `daddy connect` accepts."""
+    found = []
+    if (Path.home() / ".cursor").is_dir() or Path("/Applications/Cursor.app").exists() or shutil.which("cursor"):
+        found.append("cursor")
+    if _claude_code():
+        found.append("claude")
+    if claude_desktop_config().parent.is_dir() or Path("/Applications/Claude.app").exists():
+        found.append("claude-desktop")
+    return found

@@ -32,6 +32,7 @@ app.add_typer(hook_app, name="hook")
 ProjectOpt = Annotated[str | None, typer.Option("--project", "-p", help="Project slug")]
 BATCH_FILES = 150
 BATCH_BYTES = 3_000_000
+INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh"
 
 
 def _client(config: Config | None = None, timeout: float = 120) -> DaddyClient:
@@ -106,7 +107,7 @@ def join(
     config.token, config.user, config.family = result["token"], result["user"], result["family"]
     save_config(config)
     typer.secho(f"Welcome to the '{result['family']}' family, {result['user']}!", fg="green")
-    typer.echo("Next: `daddy connect cursor`, then ask your agent: “Daddy, who am I?”")
+    typer.echo("Next: `daddy connect all`, then ask your agent: “Daddy, who am I?”")
 
 
 @app.command()
@@ -144,8 +145,12 @@ def invite(
         "/api/invites",
         {"email": email, "display_name": name, "project": project, "role": role},
     )
-    typer.secho(f"Invite for {name} (valid {result['expires_in_days']} days):", fg="green")
-    typer.echo(f"  daddy join {result['code']} --server {load_config().server_url}")
+    server = load_config().server_url
+    days = result["expires_in_days"]
+    typer.secho(f"Invite for {name} (valid {days} days). Send them this line privately:", fg="green")
+    typer.echo(f"  curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {result['code']} {server}")
+    typer.echo("If they already have the `daddy` command:")
+    typer.echo(f"  daddy join {result['code']} --server {server} && daddy connect all")
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────
@@ -502,22 +507,34 @@ def revoke(device_id: str) -> None:
 
 @app.command()
 def connect(
-    agent: Annotated[str, typer.Argument(help="cursor or claude")],
+    agent: Annotated[str, typer.Argument(help="cursor, claude (Claude Code), claude-desktop, or all")],
     project_dir: Annotated[Path | None, typer.Option(help="Connect only this project folder")] = None,
     hooks: Annotated[bool, typer.Option(help="Cursor: also install the prompt guard and audit hooks")] = False,
 ) -> None:
-    """Connect an AI agent on this computer to Daddy AI."""
+    """Connect AI agents on this computer to Daddy AI (`all` connects every one it finds)."""
     if not load_config().token:
         _fail("Run `daddy init` or `daddy join` first.")
-    if agent == "cursor":
-        for change in connectors.connect_cursor(project_dir, hooks):
-            typer.echo(f"✓ {change}")
-        typer.echo("Restart Cursor (or toggle 'daddy' in Settings → MCP), then ask: “Daddy, who am I?”")
-    elif agent == "claude":
-        done, message = connectors.connect_claude()
-        typer.secho(("✓ " if done else "") + message, fg="green" if done else "yellow")
+    supported = ("cursor", "claude", "claude-desktop")
+    if agent == "all":
+        agents = connectors.detect_agents()
+        hooks = True
+        if not agents:
+            _fail("Found no Cursor, Claude Code or Claude desktop app on this computer.")
+    elif agent in supported:
+        agents = [agent]
     else:
-        _fail("Supported agents: cursor, claude")
+        _fail("Supported agents: " + ", ".join(supported) + ", all")
+    for name in agents:
+        if name == "cursor":
+            for change in connectors.connect_cursor(project_dir, hooks):
+                typer.secho(f"✓ Cursor: {change}", fg="green")
+        elif name == "claude":
+            done, message = connectors.connect_claude()
+            typer.secho(("✓ Claude Code: " if done else "") + message, fg="green" if done else "yellow")
+        else:
+            typer.secho(f"✓ Claude app: {connectors.connect_claude_desktop()}", fg="green")
+    restart = {"cursor": "Cursor", "claude": "Claude Code", "claude-desktop": "the Claude app (quit it fully)"}
+    typer.echo(f"Restart {', '.join(restart[a] for a in agents)}, then ask: “Daddy, who am I?”")
 
 
 @app.command()

@@ -69,17 +69,20 @@ uv run daddy init                    # asks for family name, your name, email
 uv run daddy project create "My App"
 uv run daddy ingest .                # or: uv run daddy github owner/repo
 uv run daddy ask "How is the project structured?"
-uv run daddy invite bob@example.com --name Bob --project my-app   # prints Bob's join command
+uv run daddy invite bob@example.com --name Bob --project my-app   # prints Bob's setup line
 ```
 
-Each teammate runs:
+Each teammate pastes the one line from their invite into a terminal (macOS or Linux):
 
 ```bash
-uv tool install "git+https://github.com/AskArtwentythree/daddy-ai#subdirectory=packages/cli"
-daddy join inv_… --server https://<gateway-host>   # the line from the invite
-daddy connect cursor                 # or: daddy connect claude
-daddy watch                          # optional: live notifications + automatic skill install
+curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh | sh -s -- inv_… https://<gateway-host>
+daddy watch                          # optional, in a new terminal: live notifications + automatic skill install
 ```
+
+[`install.sh`](install.sh) installs uv and the `daddy` command, joins the family, and runs `daddy connect all`, which
+connects every agent it finds: Cursor (with the prompt guard hooks), Claude Code and the Claude desktop app. Run it
+again without arguments to update. To connect one agent by hand: `daddy connect cursor`, `daddy connect claude` or
+`daddy connect claude-desktop`.
 
 `daddy connect cursor` adds the `daddy` MCP server to `~/.cursor/mcp.json`. Use
 `--project-dir .` to connect a single project, which also adds an always-on agent rule, and add
