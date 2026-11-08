@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 
 from ..config import get_settings
+
+log = logging.getLogger("loom.guardrails")
 
 
 class BedrockGuardrail:
@@ -15,14 +18,23 @@ class BedrockGuardrail:
         self.version = version
         self.client = boto3.client("bedrock-runtime", region_name=region)
 
-    def check(self, text: str, *, source: str = "OUTPUT") -> str | None:
-        """Return why the guardrail intervened, or ``None`` if the text passes."""
-        response = self.client.apply_guardrail(
-            guardrailIdentifier=self.guardrail_id,
-            guardrailVersion=self.version,
-            source=source,
-            content=[{"text": {"text": text[:20_000]}}],
-        )
+    def check(self, text: str, *, source: str = "INPUT") -> str | None:
+        """Return why the guardrail intervened, or ``None`` if the text passes.
+
+        Deliveries are checked as INPUT because they become another agent's input (a skill is instructions), which
+        is where Bedrock looks for prompt attacks. If Bedrock can't be reached the delivery is not blocked: both
+        secret scanners have already run on it.
+        """
+        try:
+            response = self.client.apply_guardrail(
+                guardrailIdentifier=self.guardrail_id,
+                guardrailVersion=self.version,
+                source=source,
+                content=[{"text": {"text": text[:20_000]}}],
+            )
+        except Exception:
+            log.warning("Bedrock Guardrails unavailable; relying on the secret scanners", exc_info=True)
+            return None
         if response.get("action") != "GUARDRAIL_INTERVENED":
             return None
         reasons: list[str] = []
@@ -30,7 +42,8 @@ class BedrockGuardrail:
             for entity in assessment.get("sensitiveInformationPolicy", {}).get("piiEntities", []):
                 reasons.append(f"PII: {entity.get('type')}")
             for item in assessment.get("contentPolicy", {}).get("filters", []):
-                reasons.append(f"content filter: {item.get('type')}")
+                kind = item.get("type")
+                reasons.append("a prompt attack" if kind == "PROMPT_ATTACK" else f"content filter: {kind}")
         return "Blocked by Bedrock Guardrails" + (f" ({', '.join(sorted(set(reasons)))})" if reasons else "")
 
 

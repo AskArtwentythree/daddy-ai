@@ -22,7 +22,7 @@ from loom_common import guard
 from loom_common.secrets import scan_text
 from loom_common.version import CLI_VERSION, JOIN_APPROVAL_SINCE, cli_version_of, is_older
 
-from . import delivery, retrieval
+from . import delivery, ratelimit, retrieval
 from .audit import AuditScope, audited, record
 from .auth import (
     INVITE_PREFIX,
@@ -65,6 +65,17 @@ async def lifespan(_: FastAPI):
 
 
 app = FastAPI(title="LoomAI", version="0.1.0", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def limit_anonymous_endpoints(request: Request, call_next):
+    try:
+        ratelimit.enforce(request)
+    except ratelimit.RateLimited as limited:
+        log.warning("rate limited %s %s from %s", request.method, request.url.path, ratelimit.client_address(request))
+        return JSONResponse(status_code=429, content={"error": "rate_limited", "reason": str(limited)},
+                            headers={"Retry-After": str(limited.retry_after)})
+    return await call_next(request)
 
 
 @app.middleware("http")

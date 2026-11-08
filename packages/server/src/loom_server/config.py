@@ -7,9 +7,11 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from loom_common.files import MAX_DELIVERY_BYTES
 
+SYSTEM_ENV_FILE = "/etc/loom/server.env"  # settings an operator adds by hand; redeploys never overwrite it
+
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="LOOM_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_prefix="LOOM_", env_file=(".env", SYSTEM_ENV_FILE), extra="ignore")
 
     database_url: str = "postgresql://daddy:daddy@localhost:5433/daddy"
     host: str = "127.0.0.1"
