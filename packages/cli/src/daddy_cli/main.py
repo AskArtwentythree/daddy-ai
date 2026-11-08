@@ -11,6 +11,7 @@ import subprocess
 import webbrowser
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlparse
 
 import typer
 
@@ -152,6 +153,12 @@ def invite(
     typer.echo(f"  curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {result['code']}{where}")
     typer.echo("If they already have the `daddy` command:")
     typer.echo(f"  daddy join {result['code']}{' --server' + where if where else ''} && daddy connect all")
+    if urlparse(server).hostname in ("127.0.0.1", "localhost", "0.0.0.0", "::1"):
+        typer.secho(
+            f"Warning: you are connected to a Daddy AI server on this computer ({server}), so nobody else can use "
+            "this invite. To move to the hosted Daddy AI, run `daddy logout`, then the install line from the README.",
+            fg="yellow",
+        )
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────
