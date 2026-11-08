@@ -192,20 +192,23 @@ def _pending_join(server: str, code: str) -> dict | None:
     except (OSError, ValueError):
         return None
     same = saved.get("server") == server and saved.get("code") == hashlib.sha256(code.encode()).hexdigest()
-    return saved | {"pending": True} if same else None
+    return saved | {"pending": True, "resumed": True} if same else None
 
 
 def _wait_for_approval(client: LoomClient, server: str, code: str, request: dict) -> dict:
     """Team links don't let anyone in by themselves: wait here until an admin or project owner approves."""
     path = _join_request_path()
     path.parent.mkdir(parents=True, exist_ok=True)
-    saved = {key: request[key] for key in ("request", "secret", "family", "user")}
+    saved = {key: request.get(key) for key in ("request", "secret", "family", "user", "approvers")}
     path.write_text(json.dumps(saved | {"server": server, "code": hashlib.sha256(code.encode()).hexdigest()}))
     path.chmod(0o600)
     who = " or ".join(request.get("approvers") or []) or "an admin"
-    typer.secho(f"Asked to join '{request['family']}' as {request['user']}.", fg="green")
-    typer.echo(f"Waiting for {who} to let you in (they've been told)… You can close this and run the same "
-               "command again later to keep waiting.")
+    if request.get("resumed"):
+        typer.echo(f"Still waiting for {who} to let you into '{request['family']}'…")
+    else:
+        typer.secho(f"Asked to join '{request['family']}' as {request['user']}.", fg="green")
+        typer.echo(f"Waiting for {who} to let you in (they've been told)… You can close this and run the same "
+                   "command again later to keep waiting.")
     poll = {"request": request["request"], "secret": request["secret"]}
     try:
         while True:
