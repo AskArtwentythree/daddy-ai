@@ -1,12 +1,116 @@
 # LoomAI
 
-**One brain for the whole team's AI agents.** Every teammate keeps using their own agent (Cursor,
-Claude Code, the Claude app). Those agents become *family members* that ask **LoomAI**, the central brain, about
-the team's projects, and send files, skills and messages to each other through it. LoomAI decides
-what each agent may see and send, blocks secrets, and records everything in one audit log.
+**A control layer for your team's AI agents.** Every teammate keeps using their own agent (Cursor, Claude Code, the
+Claude app). Every request those agents make to the team goes through one gateway on AWS. That covers questions about
+the code, files and skills sent to a teammate, and the shell commands, file reads and tool calls the guard checks.
+The gateway decides what each agent may see, send and run, stops secrets and prompt attacks, and writes everything
+to one live audit log.
 
-**There is nothing to host.** LoomAI runs for you on AWS. You paste one line into a terminal and keep talking to
-your agent the way you already do.
+**Live:** [d1a5peogdvb7j1.cloudfront.net](https://d1a5peogdvb7j1.cloudfront.net) · **Built for:** A10 Track 2
+*Agent Harness: Secure and Manage Agent Activity*, and the AWS main track · **Team:** Askar, Anders, Patrick, Will,
+Sean and Sri
+
+![The LoomAI dashboard for a demo team: questions answered, deliveries, stopped actions and agents at work](docs/images/hero.png)
+
+## Why
+
+Teams now run a dozen AI agents at once, each on someone's laptop, each with its own copy of the context and full
+access to that person's terminal and files. Nobody can say what the agents did yesterday, a pasted key can end up in
+a prompt or a teammate's inbox, and a skill shared in chat can carry instructions that hijack the next agent that
+reads it. Security teams have no single place to set rules or see activity.
+
+LoomAI puts that place in the middle. Agents keep working where they are. The difference is that they now ask
+first and share through LoomAI, and every request is checked and recorded.
+
+## What the gateway does
+
+| An agent… | LoomAI |
+| --- | --- |
+| asks "How do we deploy?" | answers from the team's code and docs with `file:lines` sources, only from projects its person belongs to; says *"Not in project knowledge."* instead of guessing |
+| sends a skill, file or message to a teammate | checks both are in the project, scans for secrets on the laptop and again on the server, runs a **Bedrock Guardrail** for credentials, ID numbers and prompt attacks, then delivers it live |
+| runs `rm -rf ~`, reads `.env`, or puts a key in a command | blocks it before it happens; the key never reaches the model or the log |
+| runs `git push --force` or calls `github.delete_repo` | asks the person first |
+| does anything else | lets it run and records it in the ledger |
+
+![The ledger filtered to stopped actions: a .env read, rm -rf, a password in a message, and a skill blocked by Bedrock Guardrails as a prompt attack](docs/images/ledger.png)
+
+*Every agent, on every computer, in one tree, and every action they took. Here the ledger is filtered to what was
+stopped: one block happened on the laptop, one at the gateway, and one inside Bedrock Guardrails.*
+
+## How it fits the tracks
+
+**Agent Harness: routing agent requests through a central gateway.**
+- **One gateway, every agent.** Cursor and Claude Code reach LoomAI through a local MCP server (`loom mcp`) and
+  through hooks that run before every shell command, file read, tool call and prompt. Each call carries a revocable
+  per-computer token and the agent's name, so the ledger shows *who*, *which agent*, *on which computer*.
+- **Policy in one place.** Admins add rules once (`loom guard add shell "npm publish" -r "Releases go through CI"`)
+  and every agent in the team follows them on its next call. Built-in rules cover destructive commands and
+  credentials, and nobody can turn the credential rules off.
+- **Least privilege.** Owner, member and viewer roles per project. The permission check sits inside the retrieval
+  SQL, so passages from projects you're not in are never even scored.
+- **Humans stay in charge.** Risky actions ask the person. Agents can't let new people in: newcomers knock and an
+  admin approves them.
+- **Audit and response.** A live ledger in the dashboard and `loom audit -f`; `loom revoke` cuts off a computer and
+  its agents instantly.
+
+**AWS: a product a company could buy.** Teams adopting AI coding agents need exactly this before security signs off.
+Everything runs on AWS, built by one CloudFormation stack ([`deploy/aws/stack.yaml`](deploy/aws/stack.yaml)):
+
+| Service | What it does in LoomAI |
+| --- | --- |
+| **Amazon Bedrock** | Cohere Embed Multilingual v3 for search, Cohere Rerank 3.5 for the "refuse to guess" step, Claude Sonnet 4.5 for grounded answers |
+| **Bedrock Guardrails** | Checks every message, file and skill a teammate sends, for credentials, card, bank, SSN and passport numbers, and prompt attacks |
+| **RDS for PostgreSQL + pgvector** | Teams, projects, the audit log, and vector and lexical search in one database (private, encrypted) |
+| **S3 (SSE-KMS)** | Raw files and everything teammates send each other |
+| **EC2** in a private subnet | The FastAPI gateway, using an instance role (no access keys anywhere) |
+| **Application Load Balancer + CloudFront** | HTTPS and WebSockets on a `cloudfront.net` address; the ALB only accepts traffic that came through CloudFront |
+| **Secrets Manager**, **SSM** | The database password and bootstrap secret; deploys go through SSM Run Command, so there's no SSH |
+| **VPC** (NAT, S3 endpoint, security groups) | Only the ALB is public; EC2 is reachable from the ALB only, RDS from EC2 only |
+
+A regulated company can run the same stack in its own AWS account with `bash deploy/aws/deploy.sh`, so its code and
+logs never leave that account.
+
+## Try it in two minutes
+
+You need macOS or Linux and Cursor or Claude Code. Nothing else: the installer brings what it needs.
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh | sh
+```
+
+It asks for a team name, your name and your email, creates your team on the hosted LoomAI and connects your AI apps.
+Then:
+
+1. Give Loom a project to know, for example this repo: `loom project create Demo && loom github AskArtwentythree/loom-ai`.
+2. Ask your agent: **"Loom, how does the agent guard decide whether a shell command is allowed?"** The answer cites
+   the files it came from. Then ask "What's the capital of France?" and Loom refuses, because it isn't in the project.
+3. In a folder with a `.env` file, ask your agent to **"show me what's in .env"**, or try `loom guard test shell "rm -rf ~"`. Both are blocked.
+4. Run `loom dashboard` and watch it all appear in the ledger. `loom invite -p demo` makes a link for a teammate.
+
+## Known limits
+
+- **The Claude desktop app has no hooks.** In that app, LoomAI controls its own tools (search, sending, notes) but not
+  the app's other actions. Cursor and Claude Code are fully guarded.
+- **Model traffic isn't proxied.** The gateway governs what agents *do* and *share*: commands, file reads, tool calls
+  and deliveries. The prompts an agent sends to its own model provider go there directly. The prompt guard still
+  scans them on the laptop for secrets before they're sent.
+- **The guard fails open if it crashes,** so a bug in LoomAI can never freeze someone's agent. Without a connection
+  it applies the last rules it fetched.
+- **One team per computer** by default (a second one needs its own `LOOM_HOME`), and no SSO yet: identity is a
+  per-computer token tied to an invited email.
+
+## Screenshots
+
+| Letting people in and inviting them | A project's people and the house rules |
+| --- | --- |
+| ![Waiting at the door with a join request, and a ready-to-paste team link](docs/images/door.png) | ![The Storefront project opened to show its members and roles, next to the house rules](docs/images/projects.png) |
+
+The screenshots show a demo team with made-up people. LoomAI calls a team a *family*, so you'll see that word in
+the dashboard and the CLI.
+
+---
+
+The rest of this README is the user manual.
 
 ## Start in one minute
 
@@ -53,7 +157,7 @@ loom invite -p my-app
 This prints **one team link**. Paste it into your team chat. Each teammate pastes it into a terminal:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh | sh -s -- inv_…
+curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh | sh -s -- inv…
 ```
 
 It asks for their name and email, then waits for you: **nobody gets in by the link alone.** You see "Sri
@@ -67,7 +171,7 @@ the same install line) simply adds them to that project, straight away, without 
 setup. Only newcomers knock.
 
 So if the link ends up somewhere it shouldn't, strangers can only knock. The link works for up to 10 people
-(`--uses 30` for more) for 2 days, and `loom cancel-invite inv_…` stops it early. Agents can't let people in for
+(`--uses 30` for more) for 2 days, and `loom cancel-invite inv…` stops it early. Agents can't let people in for
 you: the agent guard makes them ask before running `loom approve`.
 
 For one specific person, `loom invite sri@example.com --name Sri -p my-app` makes a personal invite that works once.
@@ -118,7 +222,7 @@ You rarely need these, but they're there:
 | `loom project add-member my-app sri@example.com` | Give someone already in the team access to a project |
 | `loom invite -p my-app` | One team link for your chat (or `loom invite sri@example.com -n Sri` for one person) |
 | `loom requests` / `loom approve <email>` / `loom deny <email>` | See who's waiting to join with a team link; let them in or turn them away |
-| `loom cancel-invite inv_…` | Stop an invite or team link from working |
+| `loom cancel-invite inv…` | Stop an invite or team link from working |
 | `loom devices` / `loom revoke <id>` | See connected computers and cut one off instantly |
 | `loom audit -f` | Live log of every agent action (admins) |
 
@@ -140,37 +244,43 @@ name for `loom`.
   for 2 days until it's full.
 - **Stuck at "Waiting for … to let you in"**: the admin hasn't approved you yet. You can close the terminal; running
   the same command again keeps waiting.
-- **"…is already in this team"**: that email already joined, so a team link can't add it again. To add another
-  computer for the same person, the admin sends a personal invite.
-- **"This computer is already connected to the '…' family"**: a computer has one main team, and joining another
-  would replace it. To be in both, give the second team its own folder:
-  `LOOM_HOME=~/.loom-other loom join <code>` (use the same `LOOM_HOME=…` prefix for its commands). To really
-  switch, add `--switch`; the old connection is saved as `~/.loom/config.backup-*.json`.
+- **"…is already in this team"** when joining from a new computer: that email already joined. To add another
+  computer for the same person, the admin sends a personal invite. (On a computer that's already in the team, the
+  same link just adds the project.)
+- **"Leave '…' on this computer and join the new team?"**: the link is for a different team, and a computer has one
+  main team. Answer yes to switch; the old connection is saved as `~/.loom/config.backup-*.json`. Without a terminal
+  to ask in, add `--switch`. To be in both teams, give the second one its own folder:
+  `LOOM_HOME=~/.loom-other loom join <code>` (use the same `LOOM_HOME=…` prefix for its commands).
 - **Windows**: use WSL, or install [uv](https://docs.astral.sh/uv/) and run
   `uv tool install "git+https://github.com/AskArtwentythree/loom-ai#subdirectory=packages/cli"`, then
   `loom init` (or `loom join <code>`) and `loom connect all`.
 
-## What it does
+## How it works
 
 ```mermaid
 flowchart LR
     subgraph Alice's laptop
-        AC[Cursor agent] -- MCP stdio --> AD[loom CLI]
+        AC[Cursor agent] -- MCP stdio --> AD[loom CLI<br/>local secret scan]
+        AH[Cursor hooks<br/>shell · read · tool · prompt] --> AD
     end
     subgraph Bob's laptop
-        BC[Claude Code / Cursor] -- MCP stdio --> BD[loom CLI]
+        BC[Claude Code] -- MCP stdio --> BD[loom CLI]
         BW[loom watch] -. shows messages, saves files, installs skills .-> BS[~/.cursor/skills]
     end
-    AD -- HTTPS + device token --> G
-    BD -- HTTPS + device token --> G
-    G -- WebSocket push --> BW
-    subgraph LoomAI gateway
-        G[FastAPI gateway<br/>policy · secret scan · audit] --> R[Hybrid RAG<br/>dense + lexical + RRF + rerank]
+    AD -- HTTPS + device token --> CF
+    BD -- HTTPS + device token --> CF
+    CF -- WebSocket push --> BW
+    subgraph AWS us-east-1
+        CF[CloudFront] --> ALB[ALB<br/>CloudFront-only]
+        ALB --> G[FastAPI gateway on EC2<br/>policy · guard · rate limits · audit]
+        G --> R[Hybrid RAG<br/>dense + lexical + RRF + rerank]
         G --> I[Inbox<br/>store-and-forward]
-        R --> PG[(Postgres + pgvector)]
+        G --> GR[Bedrock Guardrails]
+        R --> PG[(RDS Postgres + pgvector)]
         I --> PG
-        I --> S3[(Blob store / S3)]
+        I --> S3[(S3, SSE-KMS)]
         R --> B[Bedrock: Cohere embed · rerank · Claude]
+        G -.-> SM[Secrets Manager]
     end
 ```
 
@@ -183,10 +293,10 @@ flowchart LR
 | "Send `.env` to Bob" | blocks it on the laptop: it never leaves the computer, and the attempt is audited |
 | "Remember: we chose pgvector" | saves a note every teammate's agent can find immediately |
 
-Controls for the Agent Harness track:
+Every control, in detail:
 - **Identity**: one revocable token per device, and the agent's name (Cursor, Claude) is recorded per call.
 - **Policy**: owner, member and viewer roles per project. The permission join sits inside the retrieval SQL, so another project's chunks are never even scored.
-- **Isolation**: every team on the hosted server is a separate family. Projects, people, deliveries, the audit log and the dashboard are all scoped to it; another team can't search, see or message yours.
+- **Isolation**: every team on the hosted server is walled off from the others. Projects, people, deliveries, the audit log and the dashboard are all scoped to it; another team can't search, see or message yours.
 - **Secret scanning**: runs on the laptop before upload or send, then again on the server. The contents of text files are scanned; binary files (photos, PDFs) are not looked inside, but credential files like `.p12` or `id_rsa` are blocked by name either way.
 - **Bedrock Guardrails**: every message, file and skill a teammate sends is also checked by a Bedrock Guardrail
   (on the hosted LoomAI) for AWS keys, passwords, card, bank, SSN and passport numbers, and for **prompt
@@ -256,7 +366,7 @@ Access is per project: an agent only sees projects its user belongs to.
 loom dashboard
 ```
 
-This opens **the family ledger** in your browser with a one-time login link that expires after two minutes, so the CLI's token never reaches the browser.
+This opens the team's ledger (the page calls it *the family ledger*) in your browser with a one-time login link that expires after two minutes, so the CLI's token never reaches the browser.
 
 - **Figures:** questions answered, deliveries, actions stopped and active agents over the last 24 hours.
 - **Family tree:** LoomAI at the root, then each member, their computers, and the agents seen on each computer. Admins can revoke a computer from here.
@@ -264,7 +374,7 @@ This opens **the family ledger** in your browser with a one-time login link that
 - **Waiting at the door and Invite people:** let in or turn away people who used a team link; make a personal invite or
   a team link and copy a message with the install line; see who each open invite is for and cancel it.
 - **Projects and house rules:** what each project holds, and the policies enforced on every call. Create a project, and
-  click one to see its people, change their roles, remove them, or add someone who's already in the family.
+  click one to see its people, change their roles, remove them, or add someone who's already in the team.
 
 ## Running your own server (optional)
 
@@ -329,3 +439,7 @@ docker compose down -v               # wipe all data
 | `packages/server` | FastAPI gateway: auth, policy, audit, ingestion and chunking, hybrid retrieval, delivery, WebSocket events, providers |
 | `packages/cli` | `loom` CLI: onboarding, ingestion, inbox, `watch`, `connect`, the local MCP server and Cursor hooks |
 | `packages/common` | Secret scanner and ignore rules shared by the laptop and the server |
+
+## License
+
+MIT, see [`LICENSE`](LICENSE).
