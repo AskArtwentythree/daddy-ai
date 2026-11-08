@@ -14,7 +14,7 @@ class Settings(BaseSettings):
 
     blob_dir: Path = Path("data/blobs")
     s3_bucket: str | None = None
-    aws_region: str = "us-west-2"
+    aws_region: str = "us-east-1"
 
     embedding_provider: Literal["hash", "bedrock"] = "hash"
     rerank_provider: Literal["lexical", "bedrock"] = "lexical"
@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     bedrock_fast_model: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
     bedrock_answer_model: str = "us.anthropic.claude-sonnet-4-5-20250929-v1:0"
     bedrock_rerank_model_arn: str = (
-        "arn:aws:bedrock:us-west-2::foundation-model/cohere.rerank-v3-5:0"
+        "arn:aws:bedrock:us-east-1::foundation-model/cohere.rerank-v3-5:0"
     )
     guardrail_id: str | None = None
     guardrail_version: str = "DRAFT"

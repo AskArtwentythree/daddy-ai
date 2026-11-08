@@ -11,7 +11,8 @@ The diagram is [`docs/daddy-ai-aws-architecture.drawio`](../docs/daddy-ai-aws-ar
 
 ## 1. Create the AWS resources
 
-Use one region for everything; `us-west-2` is preferred.
+Use **`us-east-1`** for everything: the hackathon account blocks every other region. All the Bedrock models below are
+already enabled there (tested: embeddings, rerank, Claude Haiku 4.5 and Sonnet 4.5).
 
 | Resource | Settings |
 | --- | --- |
@@ -51,10 +52,9 @@ Open `.env` (`nano .env`) and replace **every** `CHANGE_ME`. The setup script re
 | `CHANGE_ME_BOOTSTRAP_SECRET` | A random secret | Run `openssl rand -hex 24` on the instance. |
 | `CHANGE_ME_DB_USER` | RDS master username | RDS → Databases → your DB → Configuration → Master username. |
 | `CHANGE_ME_DB_PASSWORD` | RDS master password, URL-encoded if it has `@ : / ? # %` or spaces | The password set at creation, or Secrets Manager if RDS manages it. |
-| `CHANGE_ME_RDS_ENDPOINT` | The endpoint, for example `daddy.abc123.us-west-2.rds.amazonaws.com` | RDS → your DB → Connectivity & security → Endpoint. |
+| `CHANGE_ME_RDS_ENDPOINT` | The endpoint, for example `daddy-ai-db.abc123.us-east-1.rds.amazonaws.com` | RDS → your DB → Connectivity & security → Endpoint. |
 | `CHANGE_ME_DB_NAME` | `daddy` (or `postgres` if no initial database name was set) | RDS → your DB → Configuration → DB name. |
 | `CHANGE_ME_BUCKET_NAME` | The bucket name only, no `s3://` | S3 → Buckets. |
-| `CHANGE_ME_REGION` (**2 places**) | For example `us-west-2`, in `DADDY_AWS_REGION` and inside the rerank ARN | The region picker in the console. |
 | Claude model IDs (optional) | Replace only if our defaults aren't enabled | Bedrock → Model catalog (or Cross-region inference) → the model's ID. |
 | `CHANGE_ME_GUARDRAIL_ID` (optional) | The guardrail ID, then uncomment both guardrail lines | Bedrock → Guardrails → your guardrail. |
 

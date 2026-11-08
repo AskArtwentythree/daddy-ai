@@ -31,7 +31,7 @@ A NAT Gateway gives the private subnets outbound internet. The gateway needs it 
 ## Questions to ask the AWS team
 
 **Account and limits**
-1. Which AWS account and **region** do we use? `us-west-2` is preferred because every model below is offered there.
+1. Which AWS account and **region** do we use? The hackathon account only allows **`us-east-1`**, and every model below is enabled there.
 2. Is it a temporary hackathon account (for example Workshop Studio credentials that expire every few hours), or a normal account? This decides whether the gateway can use an EC2 instance role or needs refreshed keys.
 3. Is there a budget or service allow-list? We need EC2, RDS, S3, Bedrock, KMS and CloudWatch.
 
