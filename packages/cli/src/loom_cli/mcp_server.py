@@ -9,6 +9,7 @@ from __future__ import annotations
 import contextlib
 import logging
 import os
+import time
 import warnings
 from collections.abc import Callable
 from pathlib import Path
@@ -24,7 +25,7 @@ from loom_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, t
 from loom_common.secrets import is_sensitive_path, scan_text
 from loom_common.version import CLI_VERSION, is_older
 
-from . import render, updates
+from . import local_files, render, updates
 from .client import LoomClient, LoomError
 from .config import load_config, save_config
 from .installer import install
@@ -36,6 +37,8 @@ It holds every project's code, docs, skills and notes, and delivers files betwee
 - For questions about the team's projects, files, decisions or teammates, call ask_project
   (or search_project for raw passages) and cite the sources it returns.
 - When the user wants to share a file, skill or message with a teammate, call send_to_teammate.
+  Photos, PDFs and any other file up to 25 MB work. A picture pasted into this chat never reaches you as a
+  file, so find the saved copy with find_my_files (or ask the user where it is) and send that path.
 - At the start of a conversation, call check_inbox and mention any new items.
 - When the user asks to remember or save something for the team, call save_note."""
 
@@ -176,22 +179,26 @@ async def send_to_teammate(
     """Send a file, an agent skill or a short message to a teammate's inbox.
 
     to: teammate's name or email.
-    path: a local file to send (relative to the open workspace). Any file type works, including
-    photos, PDFs and archives, up to 25 MB. Or pass text as content + filename.
+    path: the file to send: a full path, ~/..., a path in the open project, or just a file name, which is
+    looked up in Desktop, Downloads, Documents and Pictures. Any file type works, including photos, PDFs
+    and archives, up to 25 MB. Or pass text as content + filename.
+    A picture pasted or attached in this chat can't be forwarded (you never get the file itself): use
+    find_my_files to locate the saved copy, or ask the user where it is saved.
     kind: "skill" installs into the teammate's agent skills folders, "file" into their inbox
     folder, "message" is text only.
     Credentials and files containing secrets are blocked before they leave this computer.
     """
     client = _client(ctx)
     if path:
-        file_path = Path(path).expanduser()
-        if not file_path.is_absolute():
-            file_path = await _workspace_root(ctx) / file_path
-        if not file_path.is_file():
-            return f"File not found: {file_path}"
+        file_path, problem = local_files.resolve(path, await _workspace_root(ctx))
+        if file_path is None:
+            return problem
         if (size := file_path.stat().st_size) > MAX_DELIVERY_BYTES:
             return f"{file_path.name} is {describe_size(size)}; the limit is {describe_size(MAX_DELIVERY_BYTES)}."
-        payload = to_payload(file_path.read_bytes())
+        try:
+            payload = to_payload(file_path.read_bytes())
+        except PermissionError:
+            return f"Can't read {file_path}.{local_files.blocked_hint([file_path.parent])}"
         if "content_base64" in payload and kind != "file":
             return f'{file_path.name} is not a text file, so send it with kind "file".'
         filename = filename or (
@@ -241,6 +248,33 @@ async def send_to_teammate(
         )
     except LoomError as error:
         return _failure(error)
+
+
+@mcp.tool()
+async def find_my_files(name: str = "", kind: local_files.Kind = "any") -> str:
+    """Find the user's recent files in Desktop, Downloads, Documents and Pictures, newest first.
+
+    Use it when the user wants to send a photo or file without giving its full path ("the photo I just
+    downloaded", "my latest screenshot", "the PDF from today"), then pass the chosen path to send_to_teammate.
+    name: part of the file name (optional). kind: "image", "pdf", "document", "video" or "any".
+    Lists names, sizes and dates only; nothing is read or sent.
+    """
+    found, blocked = await anyio.to_thread.run_sync(lambda: local_files.find(name, kind))
+    if not found:
+        what = ("files" if kind == "any" else f"{kind} files") + (f" matching '{name}'" if name else "")
+        places = "~/" + ", ~/".join(local_files.FOLDERS)
+        return f"No {what} in {places}.{local_files.blocked_hint(blocked)}"
+    now = time.time()
+    lines = [f"- {f.path}  ({describe_size(f.size)}, {_age(now - f.modified)})" for f in found]
+    return "Newest first:\n" + "\n".join(lines) + local_files.blocked_hint(blocked)
+
+
+def _age(seconds: float) -> str:
+    if seconds < 3600:
+        return f"{max(1, int(seconds // 60))} min ago"
+    if seconds < 86400:
+        return f"{int(seconds // 3600)} h ago"
+    return f"{int(seconds // 86400)} days ago"
 
 
 @mcp.tool()

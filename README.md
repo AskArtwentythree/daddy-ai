@@ -81,11 +81,17 @@ There are no commands to learn. Once connected, your agent sees LoomAI's tools a
 | "Send the release checklist skill to Sri" | Secret check, then it installs itself into Sri's Cursor and Claude Code |
 | "Send Sri a message: the header needs fixing" | It pops up in Sri's `loom watch` window with a notification |
 | "Send this file to Sri" | Any file up to 25 MB (code, photos, PDFs, zips), saved to Sri's `~/Loom/inbox/<you>/` |
+| "Send Sri the photo I just downloaded" | The agent finds it in Desktop, Downloads, Documents or Pictures and sends it |
 | "Did anyone send me anything?" | Your inbox |
 | "Remember for the team: we freeze code on Wednesdays" | A note every teammate's agent can find right away |
 | "Loom, change my name to Alex" | Teammates now see you, and send to you, as Alex |
 
 If you ask about something that isn't in the project, Loom says *"Not in project knowledge."* instead of guessing.
+
+**Sending photos:** name the file ("send Sri beach.jpg") or describe it ("my latest screenshot"). A picture pasted
+into the chat can't be forwarded, because the agent only sees it and never gets the file itself, so send the copy
+saved on your computer. If macOS asks whether Claude or Cursor may open your Desktop, Downloads or Documents folder,
+say yes; otherwise Loom tells you where to allow it.
 
 ## Everyday commands
 
