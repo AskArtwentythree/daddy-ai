@@ -12,7 +12,7 @@ flowchart LR
     end
     subgraph Bob's laptop
         BC[Claude Code / Cursor] -- MCP stdio --> BD[daddy CLI]
-        BW[daddy watch] -. installs skills .-> BS[~/.cursor/skills]
+        BW[daddy watch] -. shows messages, saves files, installs skills .-> BS[~/.cursor/skills]
     end
     AD -- HTTPS + device token --> G
     BD -- HTTPS + device token --> G
@@ -34,6 +34,7 @@ flowchart LR
 | "How do we deploy?" | answers from the project's code, docs and notes, citing `path:lines`, and only from projects the user belongs to |
 | "What's the capital of France?" | refuses with *"Not in project knowledge."* (a relevance threshold, so it never guesses) |
 | "Send my deploy skill to Bob" | checks both are project members, scans for secrets, puts it in Bob's inbox; Bob's `daddy watch` installs it into Cursor *and* Claude Code |
+| "Send Bob a message: lunch at noon?" | it appears in Bob's `daddy watch` window right away, with a desktop notification |
 | "Send `.env` to Bob" | blocks it on the laptop: it never leaves the computer, and the attempt is audited |
 | "Remember: we chose pgvector" | saves a note every teammate's agent can find immediately |
 
@@ -52,43 +53,101 @@ The RAG pipeline follows the practices evaluated in our thesis:
 - A grounded prompt with numbered sources and prompt-injection rules.
 - Structure-aware chunks that carry their file, heading and line range.
 
-## Quick start (local, no AWS needed)
+## How people use it
 
-Requirements: Docker and [uv](https://docs.astral.sh/uv/).
+Teammates **talk to their own agent as usual**; there are no commands to learn. Once connected, the agent sees Daddy
+AI's tools and calls them by itself:
+
+| Say to your agent | What happens |
+| --- | --- |
+| "Daddy, who am I?" | Your family, projects and inbox |
+| "How does deploy work in this project?" | An answer from the team's code and docs, with sources |
+| "Send the release checklist skill to Sri" | Secret check, then it installs itself on Sri's computer |
+| "Send Patrick a message: the header needs fixing" | It pops up in Patrick's `daddy watch` window |
+| "Did anyone send me anything?" | Your inbox |
+| "Remember for the team: we freeze code on Wednesdays" | A note every teammate's agent can find |
+
+Commands are only for setup and administration: `daddy init`, `daddy project create`, `daddy ingest`, `daddy invite`,
+`daddy dashboard` and `daddy revoke`.
+
+## Getting started
+
+### 1. Host the gateway
+
+Each team runs its own gateway, called a family. Pick one:
+
+- **AWS (for a team).** One command builds the whole stack: CloudFront (HTTPS, no domain needed), an ALB, EC2 in a
+  private subnet, RDS PostgreSQL, S3 and Bedrock. It takes about 15 minutes the first time and 2 minutes for updates.
+  ```bash
+  bash deploy/aws/deploy.sh            # needs AWS credentials with Bedrock enabled, in us-east-1
+  ```
+  It prints the `daddy init` command for the next step. Details: [`deploy/README.md`](deploy/README.md).
+
+- **Your laptop (to try it alone).** Needs Docker and [uv](https://docs.astral.sh/uv/). Only this computer can reach it.
+  ```bash
+  docker compose up -d                 # Postgres 17 + pgvector on :5433
+  uv sync
+  uv run daddy-server                  # gateway on http://127.0.0.1:8787 (keep running)
+  ```
+
+### 2. Create the family and a project
+
+The person who runs `daddy init` becomes the family admin:
 
 ```bash
-docker compose up -d                 # Postgres 17 + pgvector on :5433
-uv sync
-uv run daddy-server                  # gateway on http://127.0.0.1:8787 (keep running)
-```
-
-In another terminal, the first person creates the family:
-
-```bash
-uv run daddy init                    # asks for family name, your name, email
+uv run daddy init --server https://<gateway-host> --secret …   # the line deploy.sh printed; locally just `uv run daddy init`
 uv run daddy project create "My App"
 uv run daddy ingest .                # or: uv run daddy github owner/repo
 uv run daddy ask "How is the project structured?"
-uv run daddy invite bob@example.com --name Bob --project my-app   # prints Bob's setup line
 ```
 
-Each teammate pastes the one line from their invite into a terminal (macOS or Linux):
+### 3. Invite teammates
+
+```bash
+uv run daddy invite bob@example.com --name Bob --project my-app
+```
+
+This prints one line. Send it to Bob privately, because the invite code works once like a password. Bob pastes it into a
+terminal on macOS or Linux:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/install.sh | sh -s -- inv_… https://<gateway-host>
-daddy watch                          # optional, in a new terminal: live notifications + automatic skill install
 ```
 
-[`install.sh`](install.sh) installs uv and the `daddy` command, joins the family, and runs `daddy connect all`, which
-connects every agent it finds: Cursor (with the prompt guard hooks), Claude Code and the Claude desktop app. Run it
-again without arguments to update. To connect one agent by hand: `daddy connect cursor`, `daddy connect claude` or
-`daddy connect claude-desktop`.
+[`install.sh`](install.sh) does the whole setup:
+- installs uv and the `daddy` command
+- joins the family
+- connects every agent it finds (`daddy connect all`): Cursor with the prompt guard hooks, Claude Code, and the Claude
+  desktop app
+- opens `daddy watch` in a new terminal window
 
-`daddy connect cursor` adds the `daddy` MCP server to `~/.cursor/mcp.json`. Use
-`--project-dir .` to connect a single project, which also adds an always-on agent rule, and add
-`--hooks` to install the prompt guard and activity hooks (into the same `.cursor` folder). Restart Cursor, then ask the agent
-**"Daddy, who am I?"**. It calls `whoami` and shows your family, projects and inbox. Every later
-call shows up in `daddy audit`.
+In that window, messages show up as they arrive, files are saved to `~/Daddy/inbox/<sender>/`, and skills install
+into Cursor and Claude Code. Anything sent while it was closed appears when it starts. Nobody has to run `daddy accept`.
+
+Bob restarts his agent (for the Claude app, quit it fully) and asks **"Daddy, who am I?"**. Every call after that
+shows up in `daddy audit` and the dashboard. Running the line again without the code and URL updates `daddy` and
+reconnects.
+
+To connect one agent by hand, use `daddy connect cursor`, `daddy connect claude` or `daddy connect claude-desktop`.
+`daddy connect cursor --project-dir .` connects a single project and also adds an always-on agent rule.
+
+## Projects and roles
+
+Access is per project: an agent only sees projects its user belongs to.
+
+- **Anyone in the family can create a project** with `daddy project create`, and becomes its owner.
+- **Add an existing family member** without a new invite:
+  `daddy project add-member my-app sri@example.com --role member`. Remove them with `daddy project remove-member`.
+- **Questions don't need a project name.** Daddy searches every project you belong to; `--project` narrows it down.
+- **Deliveries happen inside a project** that both people belong to.
+- **The email in an invite is the person's identity**, so use a different email per person. Nothing is ever emailed.
+
+| Role | Can |
+| --- | --- |
+| Family admin | Invite people to the family, see the whole audit log, revoke any computer |
+| Owner | Invite people to the project, manage its members, add knowledge |
+| Member | Ask, add knowledge and notes, send to teammates |
+| Viewer | Ask only |
 
 ## Dashboard
 
@@ -121,7 +180,10 @@ DADDY_GUARDRAIL_ID=…                 # optional Bedrock Guardrail on everythin
 ```
 
 Changing the embedding model requires re-ingesting, because vectors from different models are not comparable.
-The AWS setup is in [`docs/AWS.md`](docs/AWS.md) (what to ask, the IAM policy) and [`deploy/README.md`](deploy/README.md) (step-by-step deployment).
+The AWS setup is in [`deploy/aws/`](deploy/aws/) (the one-command CloudFormation deploy),
+[`deploy/README.md`](deploy/README.md) (step by step, including the manual route) and [`docs/AWS.md`](docs/AWS.md)
+(background and the IAM policy). The architecture diagram is
+[`docs/daddy-ai-aws-architecture.drawio`](docs/daddy-ai-aws-architecture.drawio).
 
 ## Development
 
