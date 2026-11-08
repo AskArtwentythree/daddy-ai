@@ -112,7 +112,10 @@ class InviteBody(BaseModel):
 
 
 class CancelInviteBody(BaseModel):
-    code: str
+    """The invite's code (the terminal) or its id from GET /api/invites (the dashboard never sees codes again)."""
+
+    code: str | None = None
+    id: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class JoinStatusBody(BaseModel):
@@ -289,7 +292,7 @@ def create_invite(body: InviteBody, actor: Actor = Depends(require_actor)) -> di
             raise InvalidRequest("A personal invite needs the person's name")
         max_uses = body.max_uses if team_link else 1
         days = TEAM_LINK_DAYS if team_link else INVITE_DAYS
-        code, code_hash = new_secret(INVITE_PREFIX)
+        code, code_hash = new_secret(INVITE_PREFIX, chat_safe=True)
         conn.execute(
             """
             INSERT INTO invites (code_hash, workspace_id, email, display_name, project_id, role, created_by,
@@ -302,8 +305,34 @@ def create_invite(body: InviteBody, actor: Actor = Depends(require_actor)) -> di
     return {"code": code, "expires_in_days": days, "max_uses": max_uses, "needs_approval": team_link}
 
 
+@app.get("/api/invites")
+def list_invites(actor: Actor = Depends(require_actor)) -> list[dict]:
+    """Invites and team links that still work: all of them for admins, your own for everyone else."""
+    with connection() as conn:
+        return conn.execute(
+            """
+            SELECT i.code_hash AS id, i.email IS NULL AS team_link, i.email, i.display_name AS name,
+                   p.slug AS project, i.role, i.uses, i.max_uses, i.expires_at, i.created_at,
+                   u.display_name AS created_by,
+                   (SELECT count(*) FROM join_requests r
+                    WHERE r.invite_hash = i.code_hash AND r.status = 'pending'
+                      AND r.created_at > now() - make_interval(hours => %s)) AS waiting
+            FROM invites i
+            JOIN users u ON u.id = i.created_by
+            LEFT JOIN projects p ON p.id = i.project_id
+            WHERE i.workspace_id = %s AND (%s OR i.created_by = %s)
+              AND i.expires_at > now() AND i.used_at IS NULL AND i.uses < i.max_uses
+            ORDER BY i.created_at DESC
+            """,
+            (REQUEST_HOURS, actor.workspace_id, actor.is_admin, actor.user_id),
+        ).fetchall()
+
+
 @app.post("/api/invites/cancel")
 def cancel_invite(body: CancelInviteBody, actor: Actor = Depends(require_actor)) -> dict:
+    if not (body.code or body.id):
+        raise InvalidRequest("Say which invite to cancel: its code or its id")
+    code_hash = body.id or hash_secret(body.code.strip())
     with audited(actor, "invite.cancel"), connection() as conn:
         row = conn.execute(
             """
@@ -311,7 +340,7 @@ def cancel_invite(body: CancelInviteBody, actor: Actor = Depends(require_actor))
             WHERE code_hash = %s AND workspace_id = %s AND (%s OR created_by = %s) AND expires_at > now()
             RETURNING uses
             """,
-            (hash_secret(body.code.strip()), actor.workspace_id, actor.is_admin, actor.user_id),
+            (code_hash, actor.workspace_id, actor.is_admin, actor.user_id),
         ).fetchone()
         if row is None:
             raise NotFound("No active invite with that code that you can cancel")

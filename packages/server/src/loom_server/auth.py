@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
+import string
 from dataclasses import dataclass
 from uuid import UUID
 
@@ -10,7 +11,8 @@ from fastapi import Header, HTTPException, Request
 from .db import connection
 
 TOKEN_PREFIX = "loom_"
-INVITE_PREFIX = "inv_"
+INVITE_PREFIX = "inv"  # invite codes travel through chat apps, which turn `_text_` into italics and drop the `_`
+CHAT_SAFE = string.ascii_letters + string.digits
 
 
 @dataclass(frozen=True)
@@ -30,9 +32,12 @@ class Actor:
         return f"{self.display_name} ({self.device_name}{client})"
 
 
-def new_secret(prefix: str) -> tuple[str, str]:
+def new_secret(prefix: str, *, chat_safe: bool = False) -> tuple[str, str]:
     """Return ``(plaintext, sha256)``; only the hash is ever stored."""
-    value = prefix + secrets.token_urlsafe(32)
+    if chat_safe:
+        value = prefix + "".join(secrets.choice(CHAT_SAFE) for _ in range(40))
+    else:
+        value = prefix + secrets.token_urlsafe(32)
     return value, hash_secret(value)
 
 

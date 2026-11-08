@@ -305,3 +305,37 @@ def test_prune_forgets_only_files_gone_from_that_folder(api, monkeypatch):
                     json={"source": "note", "keep": ["a.md"]}).status_code == 422
     assert api.post("/api/projects/web/documents/prune", headers=auth(pat),
                     json={"source": "local:web", "keep": []}).status_code == 422
+
+
+def test_dashboard_runs_the_whole_invitation_flow(api, monkeypatch):
+    import re
+
+    ida = _new_family(api, monkeypatch, "Dashboard Team", "Ida")
+    login = api.post("/api/dashboard/link", headers=auth(ida)).json()["path"].split("login=")[1]
+    board = api.post("/api/dashboard/session", json={"code": login}).json()["token"]
+
+    assert api.post("/api/projects", json={"name": "Trip Photos"}, headers=auth(board)).json()["slug"] == "trip-photos"
+    personal = api.post("/api/invites", headers=auth(board), json={
+        "email": "jo@example.com", "display_name": "Jo", "project": "trip-photos", "role": "viewer"}).json()
+    assert re.fullmatch(r"inv[A-Za-z0-9]{40}", personal["code"])  # nothing a chat app can turn into italics
+    link = api.post("/api/invites", headers=auth(board), json={"project": "trip-photos", "max_uses": 3}).json()
+    api.post("/api/join", json={"code": link["code"], "device_name": "d", "email": "max@example.com",
+                                "display_name": "Max"})
+
+    listed = api.get("/api/invites", headers=auth(board)).json()
+    assert [(i["team_link"], i["name"], i["project"], i["role"], i["waiting"]) for i in listed] == [
+        (True, None, "trip-photos", "member", 1), (False, "Jo", "trip-photos", "viewer", 0)]
+    assert "code" not in listed[0]
+
+    jo = api.post("/api/join", json={"code": personal["code"], "device_name": "d"}).json()["token"]
+    assert [i["team_link"] for i in api.get("/api/invites", headers=auth(board)).json()] == [True]
+    assert api.get("/api/invites", headers=auth(jo)).json() == []
+    assert api.post("/api/invites/cancel", headers=auth(jo), json={"id": listed[0]["id"]}).status_code == 404
+    assert api.post("/api/invites/cancel", headers=auth(board), json={"id": listed[0]["id"]}).json()["cancelled"]
+    assert api.get("/api/invites", headers=auth(board)).json() == []
+    assert api.post("/api/invites/cancel", headers=auth(board), json={}).status_code == 400
+
+    member = {"email": "jo@example.com", "role": "member"}
+    assert api.post("/api/projects/trip-photos/members", headers=auth(board), json=member).json()["role"] == "member"
+    assert api.delete("/api/projects/trip-photos/members/jo@example.com", headers=auth(board)).status_code == 200
+    assert api.get("/api/projects", headers=auth(jo)).json() == []

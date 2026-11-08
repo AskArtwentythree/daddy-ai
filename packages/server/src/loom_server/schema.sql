@@ -54,6 +54,7 @@ ALTER TABLE invites ALTER COLUMN email DROP NOT NULL;
 ALTER TABLE invites ALTER COLUMN display_name DROP NOT NULL;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS max_uses integer NOT NULL DEFAULT 1;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS uses integer NOT NULL DEFAULT 0;
+ALTER TABLE invites ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now();
 
 -- Someone who used a team link waits here until a family admin or the project's owner lets them in, so a
 -- leaked link alone gets a stranger nothing. Their computer polls with a secret only it holds (hashed here).

@@ -69,6 +69,10 @@ you: the agent guard makes them ask before running `loom approve`.
 For one specific person, `loom invite sri@example.com --name Sri -p my-app` makes a personal invite that works once.
 Personal invites can also make someone a project owner (`--role owner`); team links can't.
 
+Prefer clicking to typing? `loom dashboard` does all of this too: create projects, make an invite or team link
+(with a ready-to-paste message), see and cancel open invites, let people in, and add, remove or change the role of
+anyone in a project.
+
 ### 4. Just talk to your agent
 
 There are no commands to learn. Once connected, your agent sees LoomAI's tools and calls them by itself:
@@ -248,7 +252,10 @@ This opens **the family ledger** in your browser with a one-time login link that
 - **Figures:** questions answered, deliveries, actions stopped and active agents over the last 24 hours.
 - **Family tree:** LoomAI at the root, then each member, their computers, and the agents seen on each computer. Admins can revoke a computer from here.
 - **Ledger:** a live, filterable record of every agent action, with blocked actions shown in red and the reason for each block.
-- **Projects and house rules:** what each project holds, and the policies enforced on every call.
+- **Waiting at the door and Invite people:** let in or turn away people who used a team link; make a personal invite or
+  a team link and copy a message with the install line; see who each open invite is for and cancel it.
+- **Projects and house rules:** what each project holds, and the policies enforced on every call. Create a project, and
+  click one to see its people, change their roles, remove them, or add someone who's already in the family.
 
 ## Running your own server (optional)
 

@@ -59,7 +59,7 @@ if [ -n "$CODE" ]; then
   fi
 elif "$LOOM" status >/dev/null 2>&1; then
   step "3/4 Already connected"
-  echo "Keeping your current team. To join another one too: LOOM_HOME=~/.loom-<team> loom join <code>"
+  echo "Keeping your current team. To switch to another one: loom join <code> --switch"
 else
   step "3/4 Starting a new team (you will be its admin)"
   LOOM_FAMILY=${LOOM_FAMILY:-} LOOM_NAME=${LOOM_NAME:-} LOOM_EMAIL=${LOOM_EMAIL:-}

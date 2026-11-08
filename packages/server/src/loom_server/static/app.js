@@ -1,5 +1,8 @@
 const TOKEN_KEY = "loom.dashboard.token";
 const MAX_EVENTS = 250;
+const HOSTED = "https://d1a5peogdvb7j1.cloudfront.net";
+const INSTALL_SCRIPT = "https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh";
+const ROLES = ["owner", "member", "viewer"];
 
 const AGENTS = {
   "cursor-vscode": "Cursor",
@@ -27,6 +30,8 @@ const FILTERS = {
 const state = {
   token: sessionStorage.getItem(TOKEN_KEY),
   isAdmin: false,
+  family: null,
+  openProject: null,
   events: [],
   filter: "all",
   socket: null,
@@ -146,7 +151,6 @@ function deviceItem(device) {
 }
 
 function renderTree(data) {
-  const isFormer = (m) => m.devices.length > 0 && m.devices.every((d) => d.revoked_at);
   const former = data.members.filter(isFormer);
   const members = data.members
     .filter((m) => !isFormer(m))
@@ -173,25 +177,146 @@ function renderTree(data) {
     ${former.length ? `<p class="former">Revoked: ${former.map((m) => `<s>${esc(m.name)}</s>`).join(", ")}</p>` : ""}`;
 }
 
+// ── Projects and their people ────────────────────────────────────────────────
+
+const canManage = (project) => state.isAdmin || project.my_role === "owner";
+const isFormer = (m) => m.devices.length > 0 && m.devices.every((d) => d.revoked_at);
+
+function peopleRow(project) {
+  const manage = canManage(project);
+  const members = state.family.members.filter((m) => m.projects.some((p) => p.slug === project.slug));
+  const others = state.family.members.filter((m) => !isFormer(m) && !members.includes(m));
+  const roleOf = (m) => m.projects.find((p) => p.slug === project.slug).role;
+  const roleSelect = (m) =>
+    `<select data-role-for="${esc(m.email)}" aria-label="${esc(m.name)}'s role">${ROLES.map(
+      (r) => `<option ${r === roleOf(m) ? "selected" : ""}>${r}</option>`,
+    ).join("")}</select>`;
+  const people = members
+    .map(
+      (m) => `
+      <li>
+        <span class="name">${esc(m.name)}<small>${esc(m.email)}</small></span>
+        ${manage ? roleSelect(m) : `<span>${esc(roleOf(m))}</span>`}
+        ${manage ? `<button class="danger" data-remove="${esc(m.email)}" data-name="${esc(m.name)}">Remove</button>` : ""}
+      </li>`,
+    )
+    .join("");
+  const add = manage
+    ? `<div class="people-add">
+        ${others.length ? `
+          <select data-add-who aria-label="Someone already in the family">
+            ${others.map((m) => `<option value="${esc(m.email)}">${esc(m.name)} · ${esc(m.email)}</option>`).join("")}
+          </select>
+          <select data-add-role aria-label="Their role">${ROLES.map((r) => `<option ${r === "member" ? "selected" : ""}>${r}</option>`).join("")}</select>
+          <button class="primary" data-add>Add</button>` : ""}
+        <button class="quiet" data-invite-to="${esc(project.slug)}">Invite someone new</button>
+      </div>`
+    : "";
+  return `<tr class="people" data-slug="${esc(project.slug)}"><td colspan="5"><ul class="people-list">${people}</ul>${add}</td></tr>`;
+}
+
 function renderProjects(projects) {
   $("#projects").innerHTML =
     projects
-      .map(
-        (p) => `
-      <tr>
+      .map((p) => {
+        const open = state.openProject === p.slug;
+        return `
+      <tr class="project-row ${open ? "open" : ""}" data-slug="${esc(p.slug)}" aria-expanded="${open}">
         <td><strong>${esc(p.name)}</strong><small>${esc(p.slug)}</small></td>
         <td>${esc(p.my_role ?? "—")}</td>
         <td class="num">${p.members}</td>
         <td class="num">${p.documents.toLocaleString()}</td>
         <td class="num">${p.chunks.toLocaleString()}</td>
-      </tr>`,
-      )
-      .join("") || `<tr><td colspan="5" class="empty">No projects yet.</td></tr>`;
+      </tr>${open ? peopleRow(p) : ""}`;
+      })
+      .join("") || `<tr><td colspan="5" class="empty">No projects yet. Create the first one below.</td></tr>`;
+}
+
+// ── Invites ──────────────────────────────────────────────────────────────────
+
+function untilTime(iso) {
+  const hours = Math.max(0, (new Date(iso).getTime() - Date.now()) / 3600000);
+  if (hours < 1) return "in under an hour";
+  if (hours < 48) return `in ${Math.round(hours)} h`;
+  return `in ${Math.round(hours / 24)} days`;
+}
+
+function renderInviteProjects(projects) {
+  const choices = projects.filter(canManage).map((p) => `<option value="${esc(p.slug)}">${esc(p.name)}</option>`);
+  if (state.isAdmin) choices.push(`<option value="">The whole family, no project yet</option>`);
+  const select = $("#invite-project");
+  const chosen = select.value;
+  select.innerHTML = choices.join("");
+  if ([...select.options].some((o) => o.value === chosen)) select.value = chosen;
+  $("#invite-panel").hidden = choices.length === 0;
+}
+
+async function loadInvites() {
+  if ($("#invite-panel").hidden) return;
+  const invites = await api("/api/invites");
+  $("#invites").innerHTML =
+    invites
+      .map((i) => {
+        const where = i.project ? `the ${esc(i.project)} project` : "the family";
+        const title = i.team_link
+          ? `<strong>Team link</strong> to ${where}`
+          : `<strong>${esc(i.name)}</strong> &lt;${esc(i.email)}&gt; to ${where}`;
+        const details = [
+          i.role,
+          i.team_link ? `${i.uses} of ${i.max_uses} used` : "not used yet",
+          i.team_link && i.waiting ? `${i.waiting} waiting for you` : null,
+          `ends ${untilTime(i.expires_at)}`,
+          `by ${esc(i.created_by)}`,
+        ].filter(Boolean);
+        return `
+        <li>
+          <span class="what-invite">${title}<span class="about">${details.join(" · ")}</span></span>
+          <button class="danger" data-cancel="${esc(i.id)}">Cancel</button>
+        </li>`;
+      })
+      .join("") || `<li class="empty">No open invites.</li>`;
+}
+
+function inviteMessage(result, form) {
+  const family = state.family.family;
+  const project = form.project ? ` (project ${form.project})` : "";
+  const server = location.origin === HOSTED ? "" : ` ${location.origin}`;
+  const install = `curl -fsSL ${INSTALL_SCRIPT} | sh -s -- ${result.code}${server}`;
+  const join = `loom join ${result.code}${server ? ` --server${server}` : ""} && loom connect all`;
+  const steps = `Paste this line into Terminal (Mac or Linux):\n\n${install}\n\nAlready have loom? Run this instead:\n${join}`;
+  if (form.kind === "personal") {
+    return `Hi ${form.name}! I've invited you to our LoomAI team "${family}"${project}.\n${steps}\n\n` +
+      `The invite is just for you: it works once, for ${result.expires_in_days} days.`;
+  }
+  return `Join our LoomAI team "${family}"${project}!\n${steps}\n\n` +
+    `It asks for your name and email, then waits until ${state.family.me} lets you in. ` +
+    `Works for up to ${result.max_uses} people for ${result.expires_in_days} days.`;
+}
+
+function setInviteKind(kind) {
+  for (const el of document.querySelectorAll("#invite-form [data-for]")) el.hidden = el.dataset.for !== kind;
+  const role = $("#invite-form").elements.role;
+  if (kind === "link" && role.value === "owner") role.value = "member";
+}
+
+function showError(el, message) {
+  el.textContent = message;
+  el.hidden = !message;
+}
+
+function openInvite(project) {
+  const form = $("#invite-form");
+  form.elements.kind.value = "personal";
+  setInviteKind("personal");
+  form.elements.project.value = project;
+  $("#invite-panel").scrollIntoView({ behavior: "smooth", block: "start" });
+  form.elements.name.focus({ preventScroll: true });
 }
 
 async function loadFamily() {
   const data = await api("/api/family");
   state.isAdmin = data.is_admin;
+  state.family = data;
   $("#family-name").textContent = data.family;
   $("#me").textContent = data.me;
   const p = data.providers;
@@ -206,7 +331,9 @@ async function loadFamily() {
     .catch(console.error);
   renderTree(data);
   renderProjects(data.projects);
+  renderInviteProjects(data.projects);
   loadWaiting().catch(console.error);
+  loadInvites().catch(console.error);
 }
 
 async function loadWaiting() {
@@ -290,7 +417,9 @@ function describe(event) {
     case "ingest.github.request":
       return `imported ${file(d.repo)} from GitHub`;
     case "invite.create":
-      return `invited ${esc(d.email)}`;
+      return d.email ? `invited ${esc(d.email)} as ${esc(d.role)}` : `made a team link (${esc(d.role)})`;
+    case "invite.cancel":
+      return "cancelled an invite";
     case "family.join":
       return d.approved_by ? `${esc(d.email)} joined the family, let in by ${esc(d.approved_by)}` : `${esc(d.email)} joined the family`;
     case "family.join_request":
@@ -366,6 +495,7 @@ async function loadLedger() {
 
 const refreshFigures = debounce(() => loadStats().catch(console.error), 700);
 const refreshFamily = debounce(() => loadFamily().catch(console.error), 700);
+const refreshInvites = debounce(() => loadInvites().catch(console.error), 700);
 
 function setLive(stateName, label) {
   const el = $("#live");
@@ -383,7 +513,10 @@ function connect() {
   };
   socket.onmessage = (message) => {
     const event = JSON.parse(message.data);
-    if (event.type === "join.request") loadWaiting().catch(console.error);
+    if (event.type === "join.request") {
+      loadWaiting().catch(console.error);
+      refreshInvites();
+    }
     if (event.type !== "audit") return;
     const entry = event.event;
     state.events.unshift(entry);
@@ -391,6 +524,7 @@ function connect() {
     renderLedger(entry.id);
     refreshFigures();
     if (/^(device|family|member|project|ingest|note|dashboard|join|agent\.cursor)/.test(entry.action)) refreshFamily();
+    if (/^(invite|family\.join|join)/.test(entry.action)) refreshInvites();
   };
   socket.onclose = (closeEvent) => {
     if (!state.token) return;
@@ -439,6 +573,142 @@ $("#tree").addEventListener("click", async (click) => {
   } catch (error) {
     alert(error.message);
   }
+});
+
+$("#invite-form").addEventListener("change", (change) => {
+  if (change.target.name === "kind") setInviteKind(change.target.value);
+});
+
+$("#invite-form").addEventListener("submit", async (submit) => {
+  submit.preventDefault();
+  const form = submit.target;
+  const fields = Object.fromEntries(new FormData(form));
+  const personal = fields.kind === "personal";
+  if (personal && !(fields.name.trim() && fields.email.trim())) {
+    showError($("#invite-error"), "Write their name and email, or choose a team link.");
+    return;
+  }
+  const button = form.querySelector("button[type=submit]");
+  button.disabled = true;
+  showError($("#invite-error"), "");
+  try {
+    const result = await api("/api/invites", {
+      method: "POST",
+      body: JSON.stringify({
+        project: fields.project || null,
+        role: fields.role,
+        email: personal ? fields.email.trim() : null,
+        display_name: personal ? fields.name.trim() : null,
+        max_uses: personal ? 1 : Number(fields.uses) || 10,
+      }),
+    });
+    $("#invite-message").value = inviteMessage(result, { ...fields, name: fields.name.trim() });
+    $("#invite-result-title").textContent = personal ? `Invite for ${fields.name.trim()} is ready` : "Team link is ready";
+    $("#invite-hint").textContent = personal
+      ? `Send it privately: whoever has this code gets in as ${fields.name.trim()}. It is shown only once.`
+      : "Fine for a group chat: nobody gets in until you let them in here. It is shown only once.";
+    $("#invite-result").hidden = false;
+    $("#copy-invite").textContent = "Copy message";
+    form.elements.name.value = "";
+    form.elements.email.value = "";
+    await loadInvites();
+  } catch (error) {
+    showError($("#invite-error"), error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+$("#copy-invite").addEventListener("click", async () => {
+  const text = $("#invite-message");
+  try {
+    await navigator.clipboard.writeText(text.value);
+  } catch {
+    text.select();
+    document.execCommand("copy");
+  }
+  $("#copy-invite").textContent = "Copied";
+});
+
+$("#invites").addEventListener("click", async (click) => {
+  const button = click.target.closest("button[data-cancel]");
+  if (!button || !confirm("Cancel this invite? It stops working right away; people who already joined stay.")) return;
+  button.disabled = true;
+  try {
+    await api("/api/invites/cancel", { method: "POST", body: JSON.stringify({ id: button.dataset.cancel }) });
+  } catch (error) {
+    alert(error.message);
+  }
+  await loadInvites().catch(console.error);
+});
+
+$("#project-form").addEventListener("submit", async (submit) => {
+  submit.preventDefault();
+  const form = submit.target;
+  const button = form.querySelector("button");
+  button.disabled = true;
+  showError($("#project-error"), "");
+  try {
+    const project = await api("/api/projects", {
+      method: "POST",
+      body: JSON.stringify({ name: form.elements.name.value.trim() }),
+    });
+    form.reset();
+    state.openProject = project.slug;
+    await loadFamily();
+  } catch (error) {
+    showError($("#project-error"), error.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+async function changeMembers(request) {
+  try {
+    await request();
+  } catch (error) {
+    alert(error.message);
+  }
+  await loadFamily().catch(console.error);
+}
+
+$("#projects").addEventListener("click", (click) => {
+  const people = click.target.closest("tr.people");
+  if (!people) {
+    const row = click.target.closest("tr.project-row");
+    if (!row) return;
+    state.openProject = state.openProject === row.dataset.slug ? null : row.dataset.slug;
+    renderProjects(state.family.projects);
+    return;
+  }
+  const slug = people.dataset.slug;
+  const target = click.target;
+  if (target.dataset.inviteTo !== undefined) {
+    openInvite(target.dataset.inviteTo);
+  } else if (target.dataset.remove) {
+    if (!confirm(`Remove ${target.dataset.name} from ${slug}? Their agents lose access to it immediately.`)) return;
+    changeMembers(() =>
+      api(`/api/projects/${encodeURIComponent(slug)}/members/${encodeURIComponent(target.dataset.remove)}`, { method: "DELETE" }),
+    );
+  } else if (target.dataset.add !== undefined) {
+    const email = people.querySelector("[data-add-who]").value;
+    const role = people.querySelector("[data-add-role]").value;
+    changeMembers(() =>
+      api(`/api/projects/${encodeURIComponent(slug)}/members`, { method: "POST", body: JSON.stringify({ email, role }) }),
+    );
+  }
+});
+
+$("#projects").addEventListener("change", (change) => {
+  const email = change.target.dataset.roleFor;
+  if (!email) return;
+  const slug = change.target.closest("tr.people").dataset.slug;
+  changeMembers(() =>
+    api(`/api/projects/${encodeURIComponent(slug)}/members`, {
+      method: "POST",
+      body: JSON.stringify({ email, role: change.target.value }),
+    }),
+  );
 });
 
 async function boot() {

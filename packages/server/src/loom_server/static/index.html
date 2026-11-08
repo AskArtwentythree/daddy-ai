@@ -68,6 +68,46 @@
       <ul id="waiting" class="waiting-list"></ul>
     </section>
 
+    <section class="panel invite-panel" id="invite-panel" hidden>
+      <header class="panel-head">
+        <h2>Invite people</h2>
+        <p class="kicker">a personal invite lets one person in · a team link waits for your yes</p>
+      </header>
+      <div class="invite-body">
+        <form id="invite-form" class="invite-form" autocomplete="off">
+          <div class="toggle" role="radiogroup" aria-label="Kind of invite">
+            <label><input type="radio" name="kind" value="personal" checked> One person</label>
+            <label><input type="radio" name="kind" value="link"> Team link for a group chat</label>
+          </div>
+          <label>Project <select name="project" id="invite-project"></select></label>
+          <label data-for="personal">Name <input name="name" placeholder="Will" maxlength="80"></label>
+          <label data-for="personal">Email <input name="email" type="email" placeholder="will@example.com"></label>
+          <label data-for="link" hidden>How many people <input name="uses" type="number" min="1" max="200" value="10"></label>
+          <label>Role
+            <select name="role">
+              <option value="member">Member: asks, adds knowledge, sends files</option>
+              <option value="viewer">Viewer: only asks</option>
+              <option value="owner" data-for="personal">Owner: also manages people</option>
+            </select>
+          </label>
+          <button type="submit" class="primary">Create invite</button>
+          <p class="form-error" id="invite-error" hidden></p>
+        </form>
+        <div class="invite-out">
+          <div id="invite-result" class="invite-result" hidden>
+            <p class="kicker" id="invite-result-title"></p>
+            <textarea id="invite-message" readonly rows="7"></textarea>
+            <div class="result-actions">
+              <button type="button" id="copy-invite" class="primary">Copy message</button>
+              <span class="hint" id="invite-hint"></span>
+            </div>
+          </div>
+          <h3 class="kicker">Open invites</h3>
+          <ul id="invites" class="invite-list"></ul>
+        </div>
+      </div>
+    </section>
+
     <div class="columns">
       <section class="panel tree-panel">
         <header class="panel-head">
@@ -101,12 +141,17 @@
       <section class="panel">
         <header class="panel-head">
           <h2>Projects</h2>
-          <p class="kicker">what the family knows</p>
+          <p class="kicker">what the family knows · click one to see its people</p>
         </header>
         <table class="table projects-table">
           <thead><tr><th>Project</th><th>Your role</th><th class="num">Members</th><th class="num">Files</th><th class="num">Passages</th></tr></thead>
           <tbody id="projects"></tbody>
         </table>
+        <form id="project-form" class="project-form" autocomplete="off">
+          <input name="name" placeholder="New project name, e.g. Trip Photos" maxlength="80" required>
+          <button type="submit" class="primary">Create project</button>
+          <p class="form-error" id="project-error" hidden></p>
+        </form>
       </section>
 
       <section class="panel">
