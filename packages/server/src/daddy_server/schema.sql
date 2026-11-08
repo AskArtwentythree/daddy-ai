@@ -55,6 +55,19 @@ ALTER TABLE invites ALTER COLUMN display_name DROP NOT NULL;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS max_uses integer NOT NULL DEFAULT 1;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS uses integer NOT NULL DEFAULT 0;
 
+-- A family's own rules for agent actions, checked before the built-in ones in daddy_common.guard.
+CREATE TABLE IF NOT EXISTS guard_rules (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id  uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    kind          text NOT NULL CHECK (kind IN ('shell', 'read', 'mcp')),
+    pattern       text NOT NULL,
+    verdict       text NOT NULL CHECK (verdict IN ('allow', 'deny', 'ask')),
+    reason        text NOT NULL,
+    created_by    uuid REFERENCES users(id) ON DELETE SET NULL,
+    created_at    timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS guard_rules_workspace_idx ON guard_rules (workspace_id, created_at);
+
 -- One row per connected computer; every agent on it acts through this token.
 CREATE TABLE IF NOT EXISTS devices (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

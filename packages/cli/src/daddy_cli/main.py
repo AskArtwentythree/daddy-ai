@@ -17,6 +17,7 @@ from urllib.parse import urlparse
 
 import typer
 
+from daddy_common import guard
 from daddy_common.files import MAX_DELIVERY_BYTES, describe_size, from_payload, to_payload
 from daddy_common.ignore import skip_reason
 from daddy_common.secrets import is_sensitive_path, scan_text
@@ -30,9 +31,11 @@ from .installer import install
 
 app = typer.Typer(help="Daddy AI: your team's shared project brain.", no_args_is_help=True)
 project_app = typer.Typer(help="Create projects and manage who is in them.", no_args_is_help=True)
-hook_app = typer.Typer(help="Handlers called by Cursor hooks (not for direct use).")
+hook_app = typer.Typer(help="Handlers called by Cursor and Claude Code hooks (not for direct use).")
+guard_app = typer.Typer(help="The agent guard: what agents may run, read and call.", no_args_is_help=True)
 app.add_typer(project_app, name="project")
 app.add_typer(hook_app, name="hook")
+app.add_typer(guard_app, name="guard")
 
 ProjectOpt = Annotated[str | None, typer.Option("--project", "-p", help="Project slug")]
 BATCH_FILES = 150
@@ -748,3 +751,69 @@ def hook_audit() -> None:
     from .hooks import audit as audit_hook
 
     raise typer.Exit(audit_hook())
+
+
+@hook_app.command("guard")
+def hook_guard() -> None:
+    from .hooks import guard_check
+
+    raise typer.Exit(guard_check())
+
+
+# ── Agent guard rules ─────────────────────────────────────────────────────────
+
+GuardKind = Annotated[str, typer.Argument(help="shell (commands), read (files) or mcp (tool calls, server.tool)")]
+
+
+def _check_kind(kind: str) -> guard.Kind:
+    if kind not in guard.KINDS:
+        _fail("The kind must be shell, read or mcp.")
+    return kind  # type: ignore[return-value]
+
+
+@guard_app.command("rules")
+def guard_rules() -> None:
+    """Show the rules every agent in the family follows: the team's own first, then the built-in ones."""
+    rules = _call(_client().get, "/api/guard/rules")
+    typer.echo("Team rules (checked first):" if rules["family"] else "No team rules yet (`daddy guard add`).")
+    for rule in rules["family"]:
+        typer.echo(f"  {rule['id']}  {rule['kind']:<5} {rule['verdict']:<5} /{rule['pattern']}/  {rule['reason']}")
+    typer.echo("Built-in rules:")
+    for rule in rules["builtin"]:
+        typer.echo(f"  {rule['kind']:<5} {rule['verdict']:<5} {rule['reason']}")
+    typer.echo("Always on: secrets in commands, files or tool calls, and credential files, are blocked.")
+
+
+@guard_app.command("add")
+def guard_add(
+    kind: GuardKind,
+    pattern: Annotated[str, typer.Argument(help="Regular expression, matched case-insensitively")],
+    reason: Annotated[str, typer.Option("--reason", "-r", help="What people see when it applies")],
+    verdict: Annotated[str, typer.Option(help="deny, ask (needs the user's OK) or allow")] = "deny",
+) -> None:
+    """Add a team rule (admins), e.g. `daddy guard add shell "npm publish" -r "Releases go through CI"`."""
+    if verdict not in ("deny", "ask", "allow"):
+        _fail("The verdict must be deny, ask or allow.")
+    body = {"kind": _check_kind(kind), "pattern": pattern, "verdict": verdict, "reason": reason}
+    rule = _call(_client().post, "/api/guard/rules", body)
+    typer.secho(f"Added rule {rule['id']}: {verdict} {kind} matching /{pattern}/", fg="green")
+    typer.echo("Every agent in the family follows it within 5 minutes (shell and tool calls right away).")
+
+
+@guard_app.command("remove")
+def guard_remove(rule_id: str) -> None:
+    """Remove a team rule (admins)."""
+    result = _call(_client().delete, f"/api/guard/rules/{rule_id}")
+    typer.echo(f"Removed the rule /{result['removed']}/.")
+
+
+@guard_app.command("test")
+def guard_test(
+    kind: GuardKind,
+    target: Annotated[str, typer.Argument(help="The command, file path or server.tool to try")],
+) -> None:
+    """Show what the guard would decide, without running anything or writing to the ledger."""
+    family = guard.rules_from(_call(_client().get, "/api/guard/rules")["family"])
+    decision = guard.evaluate(_check_kind(kind), target, family_rules=family)
+    color = {"allow": "green", "ask": "yellow", "deny": "red"}[decision.verdict]
+    typer.secho(f"{decision.verdict}" + (f": {decision.reason}" if decision.reason else ""), fg=color)

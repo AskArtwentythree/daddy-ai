@@ -94,26 +94,51 @@ def _hook_command(name: str) -> str:
     return command
 
 
+def _is_ours(command: str) -> bool:
+    return any(f" hook {name}" in command for name in ("prompt-check", "audit", "guard"))
+
+
 def install_cursor_hooks(path: Path) -> str:
-    """Merge Daddy AI's prompt guard and audit hooks into a Cursor ``hooks.json``."""
+    """Merge Daddy AI's prompt guard, agent guard and audit hooks into a Cursor ``hooks.json``."""
     config = _load_json(path)
     config.setdefault("version", 1)
     all_hooks = config.setdefault("hooks", {})
     wanted = {
         "beforeSubmitPrompt": _hook_command("prompt-check"),
+        "beforeShellExecution": _hook_command("guard"),
+        "beforeMCPExecution": _hook_command("guard"),
+        "beforeReadFile": _hook_command("guard"),
         "afterMCPExecution": _hook_command("audit"),
         "stop": _hook_command("audit"),
     }
     for event, command in wanted.items():
         entries = all_hooks.setdefault(event, [])
-        entries[:] = [
-            e
-            for e in entries
-            if " hook prompt-check" not in e.get("command", "") and " hook audit" not in e.get("command", "")
-        ]
-        entries.append({"command": command})
+        entries[:] = [e for e in entries if not _is_ours(e.get("command", ""))]
+        entries.append({"command": command, "timeout": 10} if " hook guard" in command else {"command": command})
     _write_json(path, config)
-    return f"Prompt guard and audit hooks → {path}"
+    return f"Prompt guard, agent guard and audit hooks → {path}"
+
+
+def install_claude_code_hooks(path: Path | None = None) -> str:
+    """Merge the agent guard (shell, file reads, tools) and prompt guard into Claude Code's settings."""
+    path = path or Path.home() / ".claude" / "settings.json"
+    config = _load_json(path)
+    all_hooks = config.setdefault("hooks", {})
+    wanted = {
+        "PreToolUse": ("Bash|Read|mcp__.*", _hook_command("guard")),
+        "UserPromptSubmit": (None, _hook_command("prompt-check")),
+    }
+    for event, (matcher, command) in wanted.items():
+        groups = all_hooks.setdefault(event, [])
+        for group in groups:
+            group["hooks"] = [h for h in group.get("hooks", []) if not _is_ours(h.get("command", ""))]
+        groups[:] = [g for g in groups if g["hooks"]]
+        group = {"hooks": [{"type": "command", "command": command, "timeout": 10}]}
+        if matcher:
+            group = {"matcher": matcher, **group}
+        groups.append(group)
+    _write_json(path, config)
+    return f"Agent guard and prompt guard hooks → {path}"
 
 
 def claude_command() -> list[str]:
@@ -148,7 +173,7 @@ def connect_claude() -> tuple[bool, str]:
     result = subprocess.run([claude, *command[1:]], check=False, capture_output=True, text=True)
     if result.returncode != 0:
         return False, f"`claude mcp add` failed: {result.stderr.strip() or result.stdout.strip()}"
-    return True, "MCP server 'daddy' added to Claude Code (user scope)"
+    return True, f"MCP server 'daddy' added to Claude Code (user scope); {install_claude_code_hooks()}"
 
 
 def claude_desktop_config() -> Path:

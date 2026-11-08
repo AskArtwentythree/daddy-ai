@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-CLI_VERSION = "0.2.0"
+CLI_VERSION = "0.3.0"
 BINARY_FILES_SINCE = "0.2.0"
 
 _CLI_AGENT = re.compile(r"daddy-cli/(\d+(?:\.\d+)*)")

@@ -47,6 +47,8 @@ class DaddyClient:
             response = self._http.request(method, path, **kwargs)
         except httpx.ConnectError as error:
             raise DaddyError(0, f"Cannot reach Daddy AI at {self.config.server_url}") from error
+        except httpx.TimeoutException as error:
+            raise DaddyError(0, f"Daddy AI at {self.config.server_url} took too long to answer") from error
         latest = response.headers.get("X-Daddy-Latest-Cli")
         if latest:
             self.latest_cli = latest

@@ -216,3 +216,37 @@ def test_photos_and_pdfs_travel_byte_for_byte(api, monkeypatch):
     assert old_cli.headers["X-Daddy-Latest-Cli"]
     accepted = api.post(f"/api/inbox/{sent['id']}/accept", headers=auth(quinn)).json()
     assert "content" not in accepted and base64.b64decode(accepted["content_base64"]) == photo
+
+def test_guard_decides_audits_and_follows_family_rules(api, monkeypatch):
+    gus = _new_family(api, monkeypatch, "Guard Team", "Gus")
+    other = _new_family(api, monkeypatch, "Unrelated Team", "Una")
+    link = api.post("/api/invites", headers=auth(gus), json={"max_uses": 1}).json()["code"]
+    body = {"code": link, "device_name": "d", "email": "mo@example.com", "display_name": "Mo"}
+    mo = api.post("/api/join", json=body).json()["token"]
+
+    def check(token, kind, target):
+        return api.post("/api/guard", headers=auth(token), json={"kind": kind, "target": target}).json()
+
+    assert check(mo, "shell", "npm test")["verdict"] == "allow"
+    assert check(mo, "shell", "git push --force")["verdict"] == "ask"
+    assert check(mo, "shell", "cat .env")["verdict"] == "deny"
+    leaked = check(mo, "shell", "export TOKEN=ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8")
+    assert leaked["verdict"] == "deny" and leaked["rule"] == "secret"
+
+    rule = {"kind": "shell", "pattern": r"\bterraform\s+apply\b", "verdict": "deny", "reason": "Only CI applies"}
+    assert api.post("/api/guard/rules", headers=auth(mo), json=rule).status_code == 403
+    assert api.post("/api/guard/rules", headers=auth(gus), json={**rule, "pattern": "("}).status_code == 400
+    rule_id = api.post("/api/guard/rules", headers=auth(gus), json=rule).json()["id"]
+    assert check(mo, "shell", "terraform apply")["rule"] == rule_id
+    assert check(other, "shell", "terraform apply")["verdict"] == "allow"
+    assert api.get("/api/guard/rules", headers=auth(other)).json()["family"] == []
+    assert len(api.get("/api/guard/rules", headers=auth(mo)).json()["family"]) == 1
+
+    events = [e for e in api.get("/api/audit", headers=auth(gus)).json() if e["action"] == "agent.shell"]
+    assert {(e["detail"]["target"], e["decision"]) for e in events} >= {
+        ("npm test", "allow"), ("cat .env", "deny"), ("terraform apply", "deny"),
+        ("(hidden: contains a secret)", "deny"),
+    }
+    assert api.delete(f"/api/guard/rules/{rule_id}", headers=auth(other)).status_code == 404
+    assert api.delete(f"/api/guard/rules/{rule_id}", headers=auth(gus)).json()["removed"] == rule["pattern"]
+    assert check(mo, "shell", "terraform apply")["verdict"] == "allow"

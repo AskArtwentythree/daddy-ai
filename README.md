@@ -24,7 +24,7 @@ curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/daddy-ai/main/inst
 It asks three questions (team name, your name, your email), then:
 - installs the `daddy` command
 - creates your team on Daddy AI, with you as its admin
-- connects every AI app it finds: Cursor (with the secret-blocking prompt guard), Claude Code and the Claude app
+- connects every AI app it finds: Cursor and Claude Code (both with the agent guard), and the Claude app
 - opens a `daddy watch` window where teammates' messages and files show up live
 
 Then ask your agent: **"Daddy, who am I?"** There's no restart to do: Cursor picks Daddy up by itself,
@@ -163,8 +163,36 @@ Controls for the Agent Harness track:
 - **Policy**: owner, member and viewer roles per project. The permission join sits inside the retrieval SQL, so another project's chunks are never even scored.
 - **Isolation**: every team on the hosted server is a separate family. Projects, people, deliveries, the audit log and the dashboard are all scoped to it; another team can't search, see or message yours.
 - **Secret scanning**: runs on the laptop before upload or send, again on the server, and optionally through a Bedrock Guardrail. The contents of text files are scanned; binary files (photos, PDFs) are not looked inside, but credential files like `.p12` or `id_rsa` are blocked by name either way.
-- **Prompt guard**: a Cursor `beforeSubmitPrompt` hook blocks prompts containing secrets before they reach any model.
+- **Prompt guard**: Cursor and Claude Code hooks block prompts containing secrets before they reach any model.
+- **Agent guard**: before Cursor or Claude Code runs a shell command, reads a file or calls a tool, it asks Daddy AI.
+  Shell commands and tool calls are decided by the gateway (and written to the ledger); file reads are decided on
+  the laptop with the same rules. Without a connection, the laptop applies the same rules itself.
 - **Audit**: every allow, deny and error with latency, streamed live to admins (`daddy audit -f`).
+
+### The agent guard
+
+| The agent tries to… | Daddy AI |
+| --- | --- |
+| `rm -rf ~`, `mkfs`, `dd of=/dev/…` | blocks it |
+| `cat .env`, `scp id_rsa …`, `git add .env`, a command with a key in it | blocks it, and keeps the key out of the ledger |
+| read `.env`, a private key, `~/.daddy/`, or a file containing a secret | blocks it, so the secret never reaches the model |
+| change Daddy's own hooks or token (`.cursor/hooks.json`, `~/.daddy/`) | blocks it |
+| `curl … \| sh`, `git push --force`, `sudo`, `terraform destroy`, `DROP TABLE` | asks you first |
+| call a tool that deletes something (`github.delete_repo`) | asks you first |
+| anything else | lets it run, and records shell commands and tool calls in the ledger |
+
+Secrets and credential files are always blocked; no rule can switch that off. Test files (`tests/`, `test_*.py`,
+`*.test.ts`…) can be read even though they contain fake keys. Admins add the team's own rules, which are checked
+before the built-in ones:
+
+```bash
+daddy guard add shell "npm publish" -r "Releases go through CI"          # block
+daddy guard add mcp "^linear\." --verdict ask -r "Linear changes need a human"
+daddy guard add shell "^git push" --verdict allow -r "We push freely"    # overrides a built-in rule
+daddy guard rules                                                         # list everything
+daddy guard test shell "npm publish --tag next"                           # try a decision, nothing runs
+daddy guard remove <rule-id>
+```
 
 The RAG pipeline follows the practices evaluated in our thesis:
 - Hybrid dense plus lexical search with Reciprocal Rank Fusion (k=60, weights 0.7/0.3).

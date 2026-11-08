@@ -8,7 +8,8 @@ const AGENTS = {
   "claude-ai": "Claude",
   "daddy-cli": "Terminal",
   "daddy-watch": "Watcher",
-  "cursor-hook": "Cursor hook",
+  "cursor-hook": "Cursor",
+  "claude-hook": "Claude Code",
   dashboard: "Dashboard",
   "mcp-smoke": "Test client",
   "mcp-client": "MCP client",
@@ -193,6 +194,14 @@ async function loadFamily() {
   $("#me").textContent = data.me;
   const p = data.providers;
   $("#models").innerHTML = `Embeddings <code>${esc(p.embedder)}</code>, reranker <code>${esc(p.reranker)}</code>, answers <code>${esc(p.llm)}</code>.`;
+  api("/api/guard/rules")
+    .then((rules) => {
+      const team = rules.family.length ? `, plus ${rules.family.length} of the team's own` : "";
+      $("#guard").textContent =
+        `Every shell command, file read and tool call an agent makes is checked first: ${rules.builtin.length} built-in rules${team}. ` +
+        "Secrets and credential files are always blocked.";
+    })
+    .catch(console.error);
   renderTree(data);
   renderProjects(data.projects);
 }
@@ -224,6 +233,21 @@ function describe(event) {
       return `was stopped on the laptop before sending ${file(d.filename)} to <b>${esc(d.to)}</b>`;
     case "agent.prompt_blocked":
       return "was stopped from putting a secret into a prompt";
+    case "agent.shell":
+    case "agent.mcp": {
+      const what = event.action === "agent.shell" ? `<code>${esc(clip(d.target, 90))}</code>` : `the tool ${file(d.target)}`;
+      if (d.verdict === "ask") return `had to ask before running ${what}`;
+      return ok ? `ran ${what}` : `was stopped from running ${what}`;
+    }
+    case "agent.guard_blocked": {
+      const verb = { shell: "running", read: "reading", mcp: "calling" }[d.kind] ?? "doing";
+      const what = d.kind === "shell" ? `<code>${esc(clip(d.target, 90))}</code>` : file(d.target);
+      return `was stopped on the laptop from ${verb} ${what}`;
+    }
+    case "guard.rule_add":
+      return `${ok ? "added" : "tried to add"} the guard rule <code>${esc(d.pattern)}</code> (${esc(d.verdict)} ${esc(d.kind)})`;
+    case "guard.rule_remove":
+      return "removed a guard rule";
     case "agent.cursor.after_mcp_execution":
       return `used the tool ${file(d.tool_name)}${d.mcp_server_name ? ` from ${esc(d.mcp_server_name)}` : ""}`;
     case "note.save":

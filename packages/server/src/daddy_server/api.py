@@ -18,6 +18,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from daddy_common import guard
 from daddy_common.secrets import scan_text
 from daddy_common.version import CLI_VERSION, cli_version_of
 
@@ -176,6 +177,19 @@ class SendBody(BaseModel):
 
 class DashboardLoginBody(BaseModel):
     code: str
+
+
+class GuardBody(BaseModel):
+    kind: guard.Kind
+    target: str = Field(min_length=1, max_length=4000)
+    cwd: str | None = Field(default=None, max_length=1000)
+
+
+class GuardRuleBody(BaseModel):
+    kind: guard.Kind
+    pattern: str = Field(min_length=1, max_length=200)
+    verdict: guard.Verdict = "deny"
+    reason: str = Field(min_length=1, max_length=200)
 
 
 class AgentEventBody(BaseModel):
@@ -694,6 +708,68 @@ def agent_event(body: AgentEventBody, actor: Actor = Depends(require_actor)) -> 
     """Activity reported by local agent hooks, e.g. a prompt blocked on the laptop."""
     record(actor, f"agent.{body.event}", body.decision, reason=body.reason, detail=body.detail)
     return {"recorded": True}
+
+
+def _family_rules(conn, workspace_id: UUID) -> tuple[guard.Rule, ...]:
+    rows = conn.execute(
+        "SELECT id, kind, pattern, verdict, reason FROM guard_rules WHERE workspace_id = %s ORDER BY created_at",
+        (workspace_id,),
+    ).fetchall()
+    return tuple(
+        guard.Rule(r["kind"], r["pattern"], r["verdict"], r["reason"], id=str(r["id"])) for r in rows
+    )
+
+
+@app.post("/api/guard")
+def guard_check(body: GuardBody, actor: Actor = Depends(require_actor)) -> dict:
+    """Decide whether an agent may run a shell command or call a tool; every decision is audited."""
+    started = time.perf_counter()
+    with connection() as conn:
+        decision = guard.evaluate(body.kind, body.target, family_rules=_family_rules(conn, actor.workspace_id))
+    redacted = decision.rule == "secret"
+    detail = {"target": "(hidden: contains a secret)" if redacted else body.target[:500], "verdict": decision.verdict}
+    if body.cwd:
+        detail["cwd"] = body.cwd[-200:]
+    record(actor, f"agent.{body.kind}", "deny" if decision.verdict == "deny" else "allow",
+           reason=decision.reason, detail=detail, latency_ms=int((time.perf_counter() - started) * 1000))
+    return decision.as_dict()
+
+
+@app.get("/api/guard/rules")
+def guard_rules(actor: Actor = Depends(require_actor)) -> dict:
+    with connection() as conn:
+        family = _family_rules(conn, actor.workspace_id)
+    return {"family": [r.as_dict() for r in family], "builtin": [r.as_dict() for r in guard.BUILTIN_RULES]}
+
+
+@app.post("/api/guard/rules")
+def add_guard_rule(body: GuardRuleBody, actor: Actor = Depends(require_actor)) -> dict:
+    with audited(actor, "guard.rule_add", kind=body.kind, pattern=body.pattern, verdict=body.verdict), \
+            connection() as conn:
+        require_admin(actor)
+        if not guard.valid_pattern(body.pattern):
+            raise InvalidRequest("The pattern is not a valid regular expression")
+        row = conn.execute(
+            """
+            INSERT INTO guard_rules (workspace_id, kind, pattern, verdict, reason, created_by)
+            VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+            """,
+            (actor.workspace_id, body.kind, body.pattern, body.verdict, body.reason, actor.user_id),
+        ).fetchone()
+    return {"id": str(row["id"]), **body.model_dump()}
+
+
+@app.delete("/api/guard/rules/{rule_id}")
+def remove_guard_rule(rule_id: UUID, actor: Actor = Depends(require_actor)) -> dict:
+    with audited(actor, "guard.rule_remove", rule=str(rule_id)), connection() as conn:
+        require_admin(actor)
+        row = conn.execute(
+            "DELETE FROM guard_rules WHERE id = %s AND workspace_id = %s RETURNING pattern",
+            (rule_id, actor.workspace_id),
+        ).fetchone()
+        if row is None:
+            raise NotFound("No such rule in this family")
+    return {"removed": row["pattern"]}
 
 
 @app.websocket("/api/ws")
