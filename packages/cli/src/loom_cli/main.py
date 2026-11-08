@@ -85,8 +85,12 @@ def _call(fn, *args, **kwargs):
         _fail(("Denied: " if error.denied else "Error: ") + error.reason)
 
 
+def _can_ask() -> bool:
+    return sys.stdin.isatty()
+
+
 def _keep_current_connection(config: Config, switch: bool, again: str) -> None:
-    """Refuse to overwrite a working connection unless --switch is given; always back the old one up."""
+    """Never overwrite a working connection unasked (--switch or a yes in the terminal); always back it up."""
     if not config.token:
         return
     try:
@@ -94,12 +98,18 @@ def _keep_current_connection(config: Config, switch: bool, again: str) -> None:
     except LoomError:
         me = None  # revoked or unreachable: replacing it is the way back in, but keep a copy anyway
     if me and not switch:
-        _fail(
-            f"This computer is already connected to the '{me['family']}' family as {me['user']}, and joining "
-            "replaces that connection.\n"
-            f"To be in both, give the new team its own folder:  LOOM_HOME=~/.loom-<team> {again}\n"
-            f"To replace it anyway:  {again} --switch   (the current connection is backed up first)"
-        )
+        current = f"This computer is connected to the '{me['family']}' family as {me['user']}."
+        if _can_ask():
+            typer.echo(f"{current} Your agents use one team at a time; the old connection is backed up first.")
+            if not typer.confirm(f"Leave '{me['family']}' on this computer and join the new team?", default=False):
+                typer.echo(f"Kept '{me['family']}'. To keep both teams for terminal commands only (agents use "
+                           f"the team you connect last): `LOOM_HOME=~/.loom-<team> {again}`")
+                raise typer.Exit(1)
+        else:
+            _fail(
+                f"{current} Joining replaces that connection (agents use one team at a time).\n"
+                f"To replace it (the current connection is backed up first):  `{again} --switch`"
+            )
     backup = config_path().with_name(f"config.backup-{datetime.now():%Y%m%d-%H%M%S}.json")
     backup.write_text(config_path().read_text())
     backup.chmod(0o600)

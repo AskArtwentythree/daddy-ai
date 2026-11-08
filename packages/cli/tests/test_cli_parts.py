@@ -142,7 +142,8 @@ def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
     runner = CliRunner()
 
     refused = runner.invoke(main.app, ["join", "inv_x"])
-    assert refused.exit_code == 1 and "already connected to the 'acmhack' family" in refused.output
+    assert refused.exit_code == 1 and "connected to the 'acmhack' family" in refused.output
+    assert "`loom join inv_x --switch`" in refused.output
     assert load_config().token == "dad_old"
 
     switched = runner.invoke(main.app, ["join", "inv_x", "--switch"])
@@ -154,6 +155,30 @@ def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
 
     alive["ok"] = False
     assert runner.invoke(main.app, ["join", "inv_y"]).exit_code == 0
+
+
+def test_join_in_a_terminal_asks_before_replacing_the_team(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from loom_cli import main
+    from loom_cli.config import load_config, save_config
+
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom"))
+    save_config(Config(token="dad_old", user="Name", family="Test"))
+    monkeypatch.setattr(main, "_can_ask", lambda: True)
+    monkeypatch.setattr(main.LoomClient, "get", lambda self, path: {"family": "Test", "user": "Name"})
+    monkeypatch.setattr(main.LoomClient, "post", lambda self, path, body: {
+        "token": "dad_new", "user": "Will", "family": "acmhack"})
+    runner = CliRunner()
+
+    declined = runner.invoke(main.app, ["join", "inv_x"], input="n\n")
+    assert declined.exit_code == 1 and "Kept 'Test'" in declined.output
+    assert load_config().token == "dad_old"
+
+    agreed = runner.invoke(main.app, ["join", "inv_x"], input="y\n")
+    assert agreed.exit_code == 0 and "Welcome to the 'acmhack' family, Will!" in agreed.output
+    assert load_config().token == "dad_new"
+    assert len(list((tmp_path / ".loom").glob("config.backup-*.json"))) == 1
 
 
 def test_join_with_a_team_link_waits_for_approval_and_can_resume(tmp_path, monkeypatch):
