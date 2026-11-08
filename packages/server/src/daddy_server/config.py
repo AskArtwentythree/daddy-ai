@@ -48,6 +48,8 @@ class Settings(BaseSettings):
     max_artifact_bytes: int = 1_000_000
 
     bootstrap_secret: str | None = None
+    # Hosted mode: anyone may start a new family without the secret. Families never see each other's data.
+    open_signup: bool = False
 
 
 @lru_cache

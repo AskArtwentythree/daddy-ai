@@ -7,6 +7,8 @@ import os
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
+HOSTED_SERVER = "https://d1a5peogdvb7j1.cloudfront.net"
+
 
 def home_dir() -> Path:
     return Path(os.environ.get("DADDY_HOME", Path.home() / ".daddy")).expanduser()
@@ -18,7 +20,7 @@ def config_path() -> Path:
 
 @dataclass
 class Config:
-    server_url: str = "http://127.0.0.1:8787"
+    server_url: str = HOSTED_SERVER
     token: str | None = None
     user: str | None = None
     family: str | None = None

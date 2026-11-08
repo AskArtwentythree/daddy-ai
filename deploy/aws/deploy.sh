@@ -1,11 +1,13 @@
 #!/usr/bin/env bash
 # Creates (or updates) the whole AWS setup from deploy/aws/stack.yaml and installs the committed code on it.
 # Run from your laptop with AWS credentials loaded:  bash deploy/aws/deploy.sh   (safe to re-run)
+# OPEN_SIGNUP=true lets anyone start their own family without the bootstrap secret (how the hosted one runs).
 # Takes ~15 minutes the first time (the database and CloudFront are the slow parts), ~2 minutes after.
 set -euo pipefail
 
 cd "$(dirname "$0")/../.."
 STACK=${STACK:-daddy-full}
+OPEN_SIGNUP=${OPEN_SIGNUP:-false}
 export AWS_REGION=${AWS_REGION:-us-east-1} AWS_PAGER=""
 
 aws sts get-caller-identity --query Arn --output text >/dev/null \
@@ -47,7 +49,7 @@ for _ in $(seq 1 60); do
   sleep 5
 done
 APP=/home/ec2-user/daddy-ai
-CMD="set -e; aws s3 cp s3://$BUCKET/releases/daddy-ai.tar.gz /tmp/daddy-ai.tar.gz --region $AWS_REGION --only-show-errors; mkdir -p $APP; tar -xzf /tmp/daddy-ai.tar.gz -C $APP; bash $APP/deploy/aws/install.sh $AWS_REGION $BUCKET $DB_ENDPOINT $DB_SECRET_ARN $BOOTSTRAP_SECRET_ARN"
+CMD="set -e; aws s3 cp s3://$BUCKET/releases/daddy-ai.tar.gz /tmp/daddy-ai.tar.gz --region $AWS_REGION --only-show-errors; mkdir -p $APP; tar -xzf /tmp/daddy-ai.tar.gz -C $APP; bash $APP/deploy/aws/install.sh $AWS_REGION $BUCKET $DB_ENDPOINT $DB_SECRET_ARN $BOOTSTRAP_SECRET_ARN $OPEN_SIGNUP"
 COMMAND_ID=$(aws ssm send-command --instance-ids "$INSTANCE" --document-name AWS-RunShellScript \
   --comment "Install Daddy AI" --parameters "{\"commands\":[\"$CMD\"]}" \
   --query Command.CommandId --output text)
@@ -66,6 +68,7 @@ for _ in $(seq 1 30); do
   if health=$(curl -fsS "$URL/api/health" 2>/dev/null); then
     echo "Daddy AI is live at $URL : $health"
     echo
+    [[ $OPEN_SIGNUP == true ]] && echo "Open sign-up is on: anyone can start a family with  daddy init --server $URL"
     echo "Create the family (prints nothing secret):"
     echo "  uv run daddy init --server $URL --secret \"\$(aws secretsmanager get-secret-value --region $AWS_REGION --secret-id $BOOTSTRAP_SECRET_ARN --query SecretString --output text)\""
     exit 0

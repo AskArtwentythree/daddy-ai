@@ -20,7 +20,7 @@ from daddy_common.secrets import is_sensitive_path, scan_text
 from . import connect as connectors
 from . import render
 from .client import DaddyClient, DaddyError
-from .config import Config, config_path, load_config, save_config
+from .config import HOSTED_SERVER, Config, config_path, load_config, save_config
 from .installer import install
 
 app = typer.Typer(help="Daddy AI: your team's shared project brain.", no_args_is_help=True)
@@ -66,11 +66,11 @@ def init(
     family: Annotated[str, typer.Option(prompt="Family (team) name")],
     name: Annotated[str, typer.Option(prompt="Your name")],
     email: Annotated[str, typer.Option(prompt="Your email")],
-    server: Annotated[str, typer.Option(help="Daddy AI URL")] = "http://127.0.0.1:8787",
+    server: Annotated[str, typer.Option(help="Daddy AI URL (default: the hosted Daddy AI)")] = HOSTED_SERVER,
     device: Annotated[str | None, typer.Option(help="Name for this computer")] = None,
-    secret: Annotated[str | None, typer.Option(help="Bootstrap secret, if the server has one")] = None,
+    secret: Annotated[str | None, typer.Option(help="Bootstrap secret, for self-hosted servers")] = None,
 ) -> None:
-    """Start a new family and become its admin (first person only)."""
+    """Start a new family (your team) and become its admin."""
     config = load_config()
     config.server_url = server.rstrip("/")
     result = _call(
@@ -87,13 +87,13 @@ def init(
     config.token, config.user, config.family = result["token"], result["user"], result["family"]
     save_config(config)
     typer.secho(f"Welcome, {name}! You are the admin of the '{family}' family.", fg="green")
-    typer.echo("Next: `daddy project create <name>`, `daddy ingest .`, then `daddy connect cursor`.")
+    typer.echo("Next: `daddy project create <name>`, `daddy ingest .`, then `daddy invite <email> --name <name>`.")
 
 
 @app.command()
 def join(
     code: str,
-    server: Annotated[str, typer.Option(help="Daddy AI URL")] = "http://127.0.0.1:8787",
+    server: Annotated[str, typer.Option(help="Daddy AI URL (default: the hosted Daddy AI)")] = HOSTED_SERVER,
     device: Annotated[str | None, typer.Option(help="Name for this computer")] = None,
 ) -> None:
     """Join a family with the invite code an admin gave you."""
@@ -148,9 +148,10 @@ def invite(
     server = load_config().server_url
     days = result["expires_in_days"]
     typer.secho(f"Invite for {name} (valid {days} days). Send them this line privately:", fg="green")
-    typer.echo(f"  curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {result['code']} {server}")
+    where = "" if server == HOSTED_SERVER else f" {server}"
+    typer.echo(f"  curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {result['code']}{where}")
     typer.echo("If they already have the `daddy` command:")
-    typer.echo(f"  daddy join {result['code']} --server {server} && daddy connect all")
+    typer.echo(f"  daddy join {result['code']}{' --server' + where if where else ''} && daddy connect all")
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────

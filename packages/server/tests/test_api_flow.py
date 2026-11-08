@@ -96,3 +96,28 @@ def test_family_flow(api):
     device = next(d for d in api.get("/api/devices", headers=auth(alice)).json() if d["user"] == "Bob")
     api.post(f"/api/devices/{device['id']}/revoke", headers=auth(alice))
     assert api.get("/api/me", headers=auth(bob)).status_code == 401
+
+
+def test_open_signup_families_are_isolated(api, monkeypatch):
+    from daddy_server.config import get_settings
+
+    monkeypatch.setenv("DADDY_OPEN_SIGNUP", "true")
+    get_settings.cache_clear()
+    zed = api.post(
+        "/api/bootstrap",
+        json={"family_name": "Other Team", "email": "zed@example.com", "display_name": "Zed", "device_name": "z"},
+    ).json()["token"]
+    monkeypatch.delenv("DADDY_OPEN_SIGNUP")
+    get_settings.cache_clear()
+
+    assert api.get("/api/projects", headers=auth(zed)).json() == []
+    answer = api.post("/api/ask", headers=auth(zed), json={"query": "How do we deploy the gateway?"}).json()
+    assert answer["answer"] == "Not in project knowledge." and answer["citations"] == []
+    assert api.post("/api/ask", headers=auth(zed), json={"query": "deploy", "project": "app"}).status_code == 404
+    assert api.post("/api/projects", json={"name": "app", "slug": "app"}, headers=auth(zed)).status_code == 200
+    note = {"project": "app", "to": "Alice", "filename": "hi.txt", "content": "hi"}
+    sent = api.post("/api/send", headers=auth(zed), json=note)
+    assert sent.status_code in (400, 404)
+    family = api.get("/api/family", headers=auth(zed)).json()
+    assert [m["name"] for m in family["members"]] == ["Zed"]
+    assert {e["user"] for e in api.get("/api/audit", headers=auth(zed)).json()} <= {"Zed", None}

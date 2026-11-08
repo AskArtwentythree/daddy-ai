@@ -1,10 +1,11 @@
 #!/usr/bin/env bash
 # Runs on the EC2 instance as root (deploy/aws/deploy.sh sends it through SSM Run Command).
 # Writes .env from Secrets Manager and the stack outputs, then runs deploy/setup-ec2.sh as ec2-user.
-#   install.sh REGION BUCKET DB_ENDPOINT DB_SECRET_ARN BOOTSTRAP_SECRET_ARN
+#   install.sh REGION BUCKET DB_ENDPOINT DB_SECRET_ARN BOOTSTRAP_SECRET_ARN [OPEN_SIGNUP]
 set -euo pipefail
 
-REGION=$1 BUCKET=$2 DB_ENDPOINT=$3 DB_SECRET_ARN=$4 BOOTSTRAP_SECRET_ARN=$5
+REGION=$1 BUCKET=$2 DB_ENDPOINT=$3 DB_SECRET_ARN=$4 BOOTSTRAP_SECRET_ARN=$5 OPEN_SIGNUP=${6:-false}
+[[ $OPEN_SIGNUP == true ]] || OPEN_SIGNUP=false
 REPO_DIR=$(cd "$(dirname "$0")/../.." && pwd)
 
 secret() { aws secretsmanager get-secret-value --region "$REGION" --secret-id "$1" --query SecretString --output text; }
@@ -19,6 +20,7 @@ BOOTSTRAP_SECRET=$(secret "$BOOTSTRAP_SECRET_ARN")
 
 umask 077
 sed -e "s|^DADDY_BOOTSTRAP_SECRET=.*|DADDY_BOOTSTRAP_SECRET=$BOOTSTRAP_SECRET|" \
+    -e "s|^DADDY_OPEN_SIGNUP=.*|DADDY_OPEN_SIGNUP=$OPEN_SIGNUP|" \
     -e "s|^DADDY_S3_BUCKET=.*|DADDY_S3_BUCKET=$BUCKET|" \
     -e "s|^DADDY_AWS_REGION=.*|DADDY_AWS_REGION=$REGION|" \
     -e "s|^DADDY_BEDROCK_RERANK_MODEL_ARN=.*|DADDY_BEDROCK_RERANK_MODEL_ARN=arn:aws:bedrock:$REGION::foundation-model/cohere.rerank-v3-5:0|" \
