@@ -50,9 +50,7 @@ step "4/4 Connecting your AI apps"
 "$DADDY" connect all
 
 step "Done!"
-if [ "$(uname)" = "Darwin" ] && "$DADDY" watch --window >/dev/null 2>&1; then
-  echo "A new Terminal window is now running \`daddy watch\`: messages from teammates appear there instantly,"
-  echo "and files and skills they send are saved and installed automatically. Keep it open."
-else
-  echo "Open a new terminal and run \`daddy watch\` to get messages, files and skills from teammates live."
+if [ -z "${DADDY_NO_WINDOW:-}" ]; then
+  "$DADDY" watch --window || echo "Run \`daddy watch\` in a new terminal to get messages from teammates live."
 fi
+echo "Messages, files and skills from teammates appear in the \`daddy watch\` window as they arrive."

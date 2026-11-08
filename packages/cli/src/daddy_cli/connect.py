@@ -37,7 +37,7 @@ def executable() -> str:
     return found
 
 
-def _custom_home() -> str | None:
+def custom_home() -> str | None:
     default = Path.home() / ".daddy"
     return None if home_dir() == default else str(home_dir())
 
@@ -55,7 +55,7 @@ def _write_json(path: Path, data: dict) -> None:
 
 def mcp_entry(project_dir: Path | None = None) -> dict:
     env = {}
-    if home := _custom_home():
+    if home := custom_home():
         env["DADDY_HOME"] = home
     if project_dir is not None:
         env["DADDY_WORKSPACE"] = str(project_dir.resolve())
@@ -88,7 +88,7 @@ def connect_cursor(project_dir: Path | None, hooks: bool) -> list[str]:
 
 def _hook_command(name: str) -> str:
     command = f"{shlex.quote(executable())} hook {name}"
-    if home := _custom_home():
+    if home := custom_home():
         command = f"DADDY_HOME={shlex.quote(home)} {command}"
     return command
 
@@ -117,7 +117,7 @@ def install_cursor_hooks(path: Path) -> str:
 
 def claude_command() -> list[str]:
     command = ["claude", "mcp", "add", "--scope", "user"]
-    if home := _custom_home():
+    if home := custom_home():
         command += ["-e", f"DADDY_HOME={home}"]
     return [*command, "daddy", "--", executable(), "mcp"]
 

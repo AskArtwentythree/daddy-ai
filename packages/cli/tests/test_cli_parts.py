@@ -37,6 +37,39 @@ def test_install_never_escapes_target(tmp_path):
     assert not (tmp_path / "outside.txt").exists()
 
 
+class _FakeInboxClient:
+    def __init__(self, waiting, contents):
+        self.waiting, self.contents, self.accepted = waiting, contents, []
+
+    def get(self, path, **params):
+        assert path == "/api/inbox"
+        return self.waiting
+
+    def post(self, path):
+        delivery_id = path.split("/")[3]
+        self.accepted.append(delivery_id)
+        item = next(i for i in self.waiting if i["id"] == delivery_id)
+        return item | {"content": self.contents[delivery_id]}
+
+
+def test_watch_opens_waiting_messages_and_files_without_accept(tmp_path, monkeypatch):
+    monkeypatch.setattr(watch, "notify", lambda *args: None)
+    base = {"note": "", "project": "app", "from": "Alice"}
+    waiting = [  # newest first, as /api/inbox returns them
+        base | {"id": "f1", "kind": "file", "filename": "plan.md", "install_path": "plan.md"},
+        base | {"id": "m1", "kind": "message", "filename": "message.txt", "install_path": None},
+    ]
+    lines = []
+    watcher = watch.Watcher(_config(tmp_path), lines.append)
+    watcher.client = _FakeInboxClient(waiting, {"m1": "Hello world", "f1": "# Plan"})
+
+    assert watcher.handle({"type": "hello", "user": "Bob", "device": "laptop"})
+
+    assert watcher.client.accepted == ["m1", "f1"]
+    assert "   Hello world" in lines
+    assert (tmp_path / "inbox" / "Alice" / "plan.md").read_text() == "# Plan"
+
+
 def test_hook_event_names_become_snake_case():
     assert _snake("afterMCPExecution") == "after_mcp_execution"
     assert _snake("beforeSubmitPrompt") == "before_submit_prompt"
@@ -76,39 +109,3 @@ def test_connect_cursor_merges_existing_config(tmp_path, monkeypatch):
     hooks = json.loads((cursor / "hooks.json").read_text())["hooks"]
     assert [h["command"] for h in hooks["stop"]] == ["mine", "/opt/daddy hook audit"]
     assert hooks["beforeSubmitPrompt"] == [{"command": "/opt/daddy hook prompt-check"}]
-
-
-class _FakeInbox:
-    def __init__(self, items: dict[str, dict]):
-        self.items = items
-        self.accepted: list[str] = []
-
-    def get(self, path, **params):
-        assert path == "/api/inbox"
-        return [i for i in reversed(self.items.values()) if i["id"] not in self.accepted]
-
-    def post(self, path):
-        delivery_id = path.split("/")[3]
-        self.accepted.append(delivery_id)
-        return self.items[delivery_id]
-
-
-def test_watch_opens_messages_and_files_without_accept(tmp_path, monkeypatch):
-    monkeypatch.setattr(watch, "notify", lambda *a: None)
-    item = {"project": "app", "from": "Patrick", "note": "", "install_path": None}
-    inbox = _FakeInbox(
-        {
-            "1": item | {"id": "1", "kind": "message", "filename": "message.txt", "content": "Hello world"},
-            "2": item | {"id": "2", "kind": "file", "filename": "plan.md", "content": "# Plan"},
-        }
-    )
-    lines: list[str] = []
-    watcher = watch.Watcher(_config(tmp_path), lines.append)
-    watcher.client = inbox
-
-    watcher.handle({"type": "hello", "user": "Sri", "device": "mac"})
-    watcher.handle({"type": "hello", "user": "Sri", "device": "mac"})
-
-    assert inbox.accepted == ["1", "2"]
-    assert "💬 Patrick [app]: Hello world" in lines
-    assert (tmp_path / "inbox" / "Patrick" / "plan.md").read_text() == "# Plan"

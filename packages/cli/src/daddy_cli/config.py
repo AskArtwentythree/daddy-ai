@@ -24,7 +24,7 @@ class Config:
     family: str | None = None
     default_project: str | None = None
     auto_install_skills: bool = True
-    auto_accept: bool = True
+    auto_accept: bool = True  # `daddy watch` opens messages and saves files to inbox_dir as they arrive
     skill_dirs: list[str] = field(default_factory=lambda: ["~/.cursor/skills", "~/.claude/skills"])
     inbox_dir: str = "~/Daddy/inbox"
 

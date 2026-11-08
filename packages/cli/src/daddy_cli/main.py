@@ -444,18 +444,21 @@ def decline(delivery_id: str) -> None:
 @app.command()
 def watch(
     feed: Annotated[bool, typer.Option(help="Also stream the family's audit log (admins)")] = False,
-    window: Annotated[bool, typer.Option("--window", help="Open it in a new Terminal window (macOS)")] = False,
+    window: Annotated[bool, typer.Option("--window", help="Run it in a new terminal window")] = False,
 ) -> None:
-    """Stay online: messages appear instantly, files and skills sent to you are saved and installed."""
-    from .watch import Watcher, open_in_new_window
+    """Stay online: messages, files and skills from teammates show up and open as they arrive."""
+    from .watch import Watcher, open_watch_window, watch_running
 
     config = load_config()
     _client(config)
     if window:
-        if open_in_new_window(connectors.executable()):
-            typer.echo("Opened `daddy watch` in a new Terminal window.")
-            return
-        typer.echo("Can't open a new window here; watching in this terminal instead.")
+        if watch_running():
+            typer.echo("`daddy watch` is already running in another window.")
+        elif open_watch_window(connectors.executable(), connectors.custom_home()):
+            typer.echo("Opened `daddy watch` in a new terminal window.")
+        else:
+            typer.echo("No terminal app found; run `daddy watch` in a new terminal.")
+        return
     with contextlib.suppress(KeyboardInterrupt):
         asyncio.run(Watcher(config, typer.echo, feed=feed).run())
 

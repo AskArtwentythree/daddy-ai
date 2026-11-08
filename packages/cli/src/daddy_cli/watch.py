@@ -1,4 +1,4 @@
-"""``daddy watch``: live pushes from Daddy AI, desktop notifications, automatic accepts and installs."""
+"""``daddy watch``: live pushes from Daddy AI, desktop notifications, automatic skill installs."""
 
 from __future__ import annotations
 
@@ -6,9 +6,9 @@ import asyncio
 import json
 import platform
 import shlex
+import shutil
 import subprocess
 from collections.abc import Callable
-from pathlib import Path
 
 import websockets
 
@@ -20,19 +20,30 @@ from .installer import install
 def notify(title: str, message: str) -> None:
     if platform.system() != "Darwin":
         return
-    script = f"display notification {json.dumps(message[:200])} with title {json.dumps(title)}"
+    script = f"display notification {json.dumps(message)} with title {json.dumps(title)}"
     subprocess.run(["osascript", "-e", script], check=False, capture_output=True)
 
 
-def open_in_new_window(daddy: str) -> bool:
-    """Start ``daddy watch`` in a new Terminal window (macOS); returns False where that isn't possible."""
-    if platform.system() != "Darwin":
-        return False
-    command = f"{shlex.quote(daddy)} watch"
-    if (home := home_dir()) != Path.home() / ".daddy":
-        command = f"DADDY_HOME={shlex.quote(str(home))} {command}"
-    script = f'tell application "Terminal"\n  do script {json.dumps(command)}\n  activate\nend tell'
-    return subprocess.run(["osascript", "-e", script], check=False, capture_output=True).returncode == 0
+def watch_running() -> bool:
+    return subprocess.run(["pgrep", "-f", "daddy watch$"], check=False, capture_output=True).returncode == 0
+
+
+def open_watch_window(daddy: str, daddy_home: str | None) -> bool:
+    """Start `daddy watch` in a new terminal window; returns False if no terminal app was found."""
+    command = [daddy, "watch"]
+    if platform.system() == "Darwin":
+        script = home_dir() / "watch.command"
+        script.parent.mkdir(parents=True, exist_ok=True)
+        env = f"export DADDY_HOME={shlex.quote(daddy_home)}\n" if daddy_home else ""
+        script.write_text(f"#!/bin/sh\n{env}clear\nexec {shlex.join(command)}\n")
+        script.chmod(0o755)
+        return subprocess.run(["open", str(script)], check=False, capture_output=True).returncode == 0
+    for terminal in ("x-terminal-emulator", "gnome-terminal", "konsole", "xterm"):
+        if shutil.which(terminal):
+            flag = "--" if terminal == "gnome-terminal" else "-e"
+            subprocess.Popen([terminal, flag, *command], start_new_session=True)
+            return True
+    return False
 
 
 AUDIT_DETAIL_KEYS = (
@@ -67,59 +78,58 @@ class Watcher:
         self.feed = feed
         self.client = DaddyClient(config, client_name="daddy-watch")
 
-    def _wants_auto(self, item: dict) -> bool:
-        return self.config.auto_install_skills if item["kind"] == "skill" else self.config.auto_accept
-
-    def _receive(self, item: dict) -> None:
-        """Show a new inbox item; accept and place it right away unless auto-accept is off."""
-        note = f"\n   note: {item['note']}" if item.get("note") else ""
-        if not self._wants_auto(item):
-            self.echo(f"📬 {item['from']} sent {item['kind']} '{item['filename']}' (project {item['project']}){note}")
-            self.echo(f"   accept with: daddy accept {item['id']}")
-            notify("Daddy AI", f"{item['from']} sent you {item['filename']}")
-            return
+    def _auto_accept(self, item: dict) -> None:
         try:
             accepted = self.client.post(f"/api/inbox/{item['id']}/accept")
         except DaddyError as error:
-            self.echo(f"📬 {item['from']} sent '{item['filename']}', could not open it: {error.reason}")
+            self.echo(f"   could not open it: {error.reason}")
             return
+        sender = accepted["from"]
         if accepted["kind"] == "message":
-            self.echo(f"💬 {accepted['from']} [{accepted['project']}]: {accepted['content']}{note}")
-            notify(f"Message from {accepted['from']}", accepted["content"])
+            self.echo("   " + accepted["content"].replace("\n", "\n   "))
+            notify(f"Message from {sender}", accepted["content"][:200])
             return
-        paths = install(accepted, accepted["content"], self.config)
-        label = "skill" if accepted["kind"] == "skill" else "file"
-        self.echo(f"📦 {accepted['from']} sent {label} '{accepted['filename']}' [{accepted['project']}]{note}")
-        for path in paths:
+        for path in install(accepted, accepted["content"], self.config):
             self.echo(f"   saved → {path}")
-        notify("Daddy AI", f"{accepted['from']} sent {label} '{accepted['filename']}' (ready to use)")
+        what = "Installed skill" if accepted["kind"] == "skill" else "Saved file"
+        notify("Daddy AI", f"{what} '{accepted['filename']}' from {sender}")
 
-    def catch_up(self) -> None:
-        """Handle whatever arrived while this computer was offline, oldest first."""
+    def _show_delivery(self, item: dict) -> None:
+        icon = {"message": "💬", "skill": "🧩"}.get(item["kind"], "📄")
+        title = "message" if item["kind"] == "message" else f"{item['kind']} '{item['filename']}'"
+        self.echo(f"{icon} {item['from']} sent a {title} (project {item['project']})")
+        if item["note"]:
+            self.echo(f"   note: {item['note']}")
+        automatic = self.config.auto_install_skills if item["kind"] == "skill" else self.config.auto_accept
+        if automatic:
+            self._auto_accept(item)
+        else:
+            notify("Daddy AI", f"{item['from']} sent you {item['filename']}")
+            self.echo(f"   accept with: daddy accept {item['id']}")
+
+    def _show_waiting(self) -> None:
         try:
-            pending = self.client.get("/api/inbox")
+            waiting = self.client.get("/api/inbox", all="false")
         except DaddyError as error:
-            self.echo(f"Could not read the inbox: {error.reason}")
+            self.echo(f"Could not read your inbox: {error.reason}")
             return
-        for item in reversed(pending):
-            self._receive(item)
+        if waiting:
+            self.echo(f"While you were away ({len(waiting)}):")
+        for item in reversed(waiting):
+            self._show_delivery(item)
 
     def handle(self, event: dict) -> bool:
         """Process one pushed event; returns False when watching should stop."""
         kind = event.get("type")
         if kind == "hello":
             self.echo(f"Watching as {event['user']} on {event['device']}. Ctrl+C to stop.")
-            self.catch_up()
+            self._show_waiting()
         elif kind == "delivery.new":
-            self._receive(event["delivery"])
+            self._show_delivery(event["delivery"])
         elif kind in ("delivery.accepted", "delivery.declined"):
-            delivery = event["delivery"]
             verb = kind.split(".")[1]
-            if delivery["kind"] == "message" and verb == "accepted":
-                self.echo(f"✓ {event['by']} read your message")
-            else:
-                self.echo(f"↩ {event['by']} {verb} '{delivery['filename']}'")
-                notify("Daddy AI", f"{event['by']} {verb} {delivery['filename']}")
+            self.echo(f"↩ {event['by']} {verb} '{event['delivery']['filename']}'")
+            notify("Daddy AI", f"{event['by']} {verb} {event['delivery']['filename']}")
         elif kind == "ingest.done":
             report = event["report"]
             self.echo(
