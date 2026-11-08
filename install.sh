@@ -49,7 +49,7 @@ if [ -n "$CODE" ]; then
   if ( : </dev/tty ) 2>/dev/null; then TTY=/dev/tty; fi
   if ! "$DADDY" join "$CODE" "$@" <"$TTY"; then
     if "$DADDY" status >/dev/null 2>&1; then
-      echo "This computer is already connected, keeping that."
+      echo "Keeping this computer's current team."
     else
       echo "Ask your admin for a new invite or team link: they run \`daddy invite -p <project>\`." >&2
       exit 1
@@ -57,7 +57,7 @@ if [ -n "$CODE" ]; then
   fi
 elif "$DADDY" status >/dev/null 2>&1; then
   step "3/4 Already connected"
-  echo "Keeping your current team. To join another one, use the line from an invite."
+  echo "Keeping your current team. To join another one too: DADDY_HOME=~/.daddy-<team> daddy join <code>"
 else
   step "3/4 Starting a new team (you will be its admin)"
   DADDY_FAMILY=${DADDY_FAMILY:-} DADDY_NAME=${DADDY_NAME:-} DADDY_EMAIL=${DADDY_EMAIL:-}

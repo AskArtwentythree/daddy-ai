@@ -110,6 +110,10 @@ To update, paste the install line again (without an invite code): it updates `da
   team link until it's full.
 - **"…is already in this team"**: that email already joined, so a team link can't add it again. To add another
   computer for the same person, the admin sends a personal invite.
+- **"This computer is already connected to the '…' family"**: a computer has one main team, and joining another
+  would replace it. To be in both, give the second team its own folder:
+  `DADDY_HOME=~/.daddy-other daddy join <code>` (use the same `DADDY_HOME=…` prefix for its commands). To really
+  switch, add `--switch`; the old connection is saved as `~/.daddy/config.backup-*.json`.
 - **Windows**: use WSL, or install [uv](https://docs.astral.sh/uv/) and run
   `uv tool install "git+https://github.com/AskArtwentythree/daddy-ai#subdirectory=packages/cli"`, then
   `daddy init` (or `daddy join <code>`) and `daddy connect all`.

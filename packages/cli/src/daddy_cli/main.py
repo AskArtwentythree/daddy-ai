@@ -9,6 +9,7 @@ import os
 import platform
 import subprocess
 import webbrowser
+from datetime import datetime
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlparse
@@ -55,6 +56,27 @@ def _call(fn, *args, **kwargs):
         _fail(("Denied: " if error.denied else "Error: ") + error.reason)
 
 
+def _keep_current_connection(config: Config, switch: bool, again: str) -> None:
+    """Refuse to overwrite a working connection unless --switch is given; always back the old one up."""
+    if not config.token:
+        return
+    try:
+        me = DaddyClient(config, timeout=10).get("/api/me")
+    except DaddyError:
+        me = None  # revoked or unreachable: replacing it is the way back in, but keep a copy anyway
+    if me and not switch:
+        _fail(
+            f"This computer is already connected to the '{me['family']}' family as {me['user']}, and joining "
+            "replaces that connection.\n"
+            f"To be in both, give the new team its own folder:  DADDY_HOME=~/.daddy-<team> {again}\n"
+            f"To replace it anyway:  {again} --switch   (the current connection is backed up first)"
+        )
+    backup = config_path().with_name(f"config.backup-{datetime.now():%Y%m%d-%H%M%S}.json")
+    backup.write_text(config_path().read_text())
+    backup.chmod(0o600)
+    typer.echo(f"Backed up the previous connection to {backup}")
+
+
 def _device_name() -> str:
     return f"{os.environ.get('USER', 'me')}'s {platform.node().split('.')[0] or 'computer'}"
 
@@ -70,10 +92,13 @@ def init(
     server: Annotated[str, typer.Option(help="Daddy AI URL (default: the hosted Daddy AI)")] = HOSTED_SERVER,
     device: Annotated[str | None, typer.Option(help="Name for this computer")] = None,
     secret: Annotated[str | None, typer.Option(help="Bootstrap secret, for self-hosted servers")] = None,
+    switch: Annotated[bool, typer.Option("--switch", help="Replace this computer's current team")] = False,
 ) -> None:
     """Start a new family (your team) and become its admin."""
     config = load_config()
+    _keep_current_connection(config, switch, "daddy init")
     config.server_url = server.rstrip("/")
+    config.default_project = None
     result = _call(
         DaddyClient(config).post,
         "/api/bootstrap",
@@ -98,9 +123,11 @@ def join(
     device: Annotated[str | None, typer.Option(help="Name for this computer")] = None,
     name: Annotated[str | None, typer.Option(envvar="DADDY_NAME", help="Your name (team links ask for it)")] = None,
     email: Annotated[str | None, typer.Option(envvar="DADDY_EMAIL", help="Your email (team links ask)")] = None,
+    switch: Annotated[bool, typer.Option("--switch", help="Replace this computer's current team")] = False,
 ) -> None:
     """Join a family with the invite code or team link an admin gave you."""
     config = load_config()
+    _keep_current_connection(config, switch, f"daddy join {code}")
     config.server_url = server.rstrip("/")
     client = DaddyClient(config)
     body = {"code": code, "device_name": device or _device_name(), "display_name": name, "email": email}
@@ -113,6 +140,8 @@ def join(
         body["display_name"] = name or typer.prompt("Your name")
         body["email"] = email or typer.prompt("Your email")
         result = _call(client.post, "/api/join", body)
+    if result["family"] != config.family:
+        config.default_project = None
     config.token, config.user, config.family = result["token"], result["user"], result["family"]
     save_config(config)
     typer.secho(f"Welcome to the '{result['family']}' family, {result['user']}!", fg="green")

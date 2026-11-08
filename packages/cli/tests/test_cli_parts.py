@@ -109,3 +109,39 @@ def test_connect_cursor_merges_existing_config(tmp_path, monkeypatch):
     hooks = json.loads((cursor / "hooks.json").read_text())["hooks"]
     assert [h["command"] for h in hooks["stop"]] == ["mine", "/opt/daddy hook audit"]
     assert hooks["beforeSubmitPrompt"] == [{"command": "/opt/daddy hook prompt-check"}]
+
+
+def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from daddy_cli import main
+    from daddy_cli.client import DaddyError
+    from daddy_cli.config import load_config, save_config
+
+    monkeypatch.setenv("DADDY_HOME", str(tmp_path / ".daddy"))
+    save_config(Config(token="dad_old", user="Askar", family="acmhack", default_project="acmhack"))
+    alive = {"ok": True}
+
+    def get(self, path):
+        if not alive["ok"]:
+            raise DaddyError(401, "revoked")
+        return {"family": "acmhack", "user": "Askar"}
+
+    monkeypatch.setattr(main.DaddyClient, "get", get)
+    monkeypatch.setattr(main.DaddyClient, "post", lambda self, path, body: {
+        "token": "dad_new", "user": "Askar", "family": "Test"})
+    runner = CliRunner()
+
+    refused = runner.invoke(main.app, ["join", "inv_x"])
+    assert refused.exit_code == 1 and "already connected to the 'acmhack' family" in refused.output
+    assert load_config().token == "dad_old"
+
+    switched = runner.invoke(main.app, ["join", "inv_x", "--switch"])
+    assert switched.exit_code == 0, switched.output
+    config = load_config()
+    assert (config.token, config.family, config.default_project) == ("dad_new", "Test", None)
+    backups = list((tmp_path / ".daddy").glob("config.backup-*.json"))
+    assert len(backups) == 1 and json.loads(backups[0].read_text())["token"] == "dad_old"
+
+    alive["ok"] = False
+    assert runner.invoke(main.app, ["join", "inv_y"]).exit_code == 0
