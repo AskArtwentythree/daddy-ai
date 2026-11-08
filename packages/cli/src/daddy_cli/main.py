@@ -430,6 +430,16 @@ def send(
     findings = scan_text(content) + scan_text(note)
     if is_sensitive_path(filename) or findings:
         reason = "credential file" if not findings else "; ".join(f.describe() for f in findings[:3])
+        with contextlib.suppress(DaddyError):
+            _client().post(
+                "/api/agent-events",
+                {
+                    "event": "share_blocked",
+                    "decision": "deny",
+                    "reason": reason,
+                    "detail": {"to": to, "filename": filename, "where": "local"},
+                },
+            )
         _fail(f"Blocked on this computer, nothing was sent: {reason}")
     client = _client()
     result = _call(
