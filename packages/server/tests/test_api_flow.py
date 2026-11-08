@@ -339,3 +339,34 @@ def test_dashboard_runs_the_whole_invitation_flow(api, monkeypatch):
     assert api.post("/api/projects/trip-photos/members", headers=auth(board), json=member).json()["role"] == "member"
     assert api.delete("/api/projects/trip-photos/members/jo@example.com", headers=auth(board)).status_code == 200
     assert api.get("/api/projects", headers=auth(jo)).json() == []
+
+
+def test_people_already_in_the_team_join_a_project_with_its_link_at_once(api, monkeypatch):
+    uma = _new_family(api, monkeypatch, "Project Team", "Uma")
+    other = _new_family(api, monkeypatch, "Elsewhere", "Oz")
+    for name in ("Base", "Trip"):
+        api.post("/api/projects", json={"name": name}, headers=auth(uma))
+    base = api.post("/api/invites", headers=auth(uma), json={"project": "base"}).json()["code"]
+    vic = _join_team_link(api, uma, {"code": base, "device_name": "d", "email": "vic@example.com",
+                                     "display_name": "Vic"})
+    trip = api.post("/api/invites", headers=auth(uma), json={"project": "trip", "role": "viewer"}).json()
+
+    added = api.post("/api/join/project", headers=auth(vic), json={"code": trip["code"]}).json()
+    assert (added["project"], added["role"], added["already"]) == ("trip", "viewer", False)
+    assert {p["slug"] for p in api.get("/api/projects", headers=auth(vic)).json()} == {"base", "trip"}
+    again = api.post("/api/join/project", headers=auth(vic), json={"code": trip["code"]}).json()
+    assert again["already"] and again["role"] == "viewer"
+    assert api.post("/api/join/project", headers=auth(uma), json={"code": trip["code"]}).json()["role"] == "owner"
+    assert api.get("/api/join/requests", headers=auth(uma)).json() == []
+    assert [i["uses"] for i in api.get("/api/invites", headers=auth(uma)).json() if i["project"] == "trip"] == [0]
+
+    elsewhere = api.post("/api/join/project", headers=auth(other), json={"code": trip["code"]})
+    assert elsewhere.status_code == 409 and "another team, 'Project Team'" in elsewhere.json()["reason"]
+    assert api.post("/api/join/project", headers=auth(vic), json={"code": "invNope"}).status_code == 404
+    personal = api.post("/api/invites", headers=auth(uma), json={
+        "email": "wes@example.com", "display_name": "Wes", "project": "trip"}).json()["code"]
+    assert api.post("/api/join/project", headers=auth(vic), json={"code": personal}).status_code == 403
+    api.post("/api/invites/cancel", headers=auth(uma), json={"code": trip["code"]})
+    assert api.post("/api/join/project", headers=auth(vic), json={"code": trip["code"]}).status_code == 403
+    actions = [(e["action"], e["decision"]) for e in api.get("/api/audit", headers=auth(uma)).json()]
+    assert ("project.join", "allow") in actions and ("project.join", "deny") in actions

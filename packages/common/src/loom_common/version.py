@@ -7,7 +7,7 @@ from __future__ import annotations
 
 import re
 
-CLI_VERSION = "0.5.2"
+CLI_VERSION = "0.5.3"
 BINARY_FILES_SINCE = "0.2.0"
 JOIN_APPROVAL_SINCE = "0.5.0"  # team links wait for an approver from here on
 

@@ -164,8 +164,10 @@ def join(
     email: Annotated[str | None, typer.Option(envvar="LOOM_EMAIL", help="Your email (team links ask)")] = None,
     switch: Annotated[bool, typer.Option("--switch", help="Replace this computer's current team")] = False,
 ) -> None:
-    """Join a family with the invite code or team link an admin gave you."""
+    """Join a team, or a project of the team you're already in, with the invite code or link you were given."""
     config = load_config()
+    if config.token and not switch and _join_project_of_my_team(config, code):
+        return
     _keep_current_connection(config, switch, f"loom join {code}")
     config.server_url = server.rstrip("/")
     client = LoomClient(config)
@@ -189,6 +191,28 @@ def join(
     save_config(config)
     typer.secho(f"Welcome to the '{result['family']}' family, {result['user']}!", fg="green")
     _next_steps()
+
+
+def _join_project_of_my_team(config: Config, code: str) -> bool:
+    """A link to a project of the team this computer is already in just adds you to it: no new team, no waiting."""
+    try:
+        result = LoomClient(config, client_name="loom-cli", timeout=30).post("/api/join/project", {"code": code})
+    except LoomError as error:
+        if error.status == 403 and error.denied:
+            _fail("Denied: " + error.reason)
+        return False  # another team's link, an unknown code, or no answer: the usual way decides
+    project = result["project"]
+    if project is None:
+        typer.secho(f"You're already in the '{result['family']}' team, {result['user']}.", fg="green")
+    elif result["already"]:
+        typer.secho(f"You're already in the '{project}' project ({result['role']}).", fg="green")
+    else:
+        typer.secho(f"You're in the '{project}' project now ({result['role']}). Your agents can use it right away.",
+                    fg="green")
+    if project and not config.default_project:
+        config.default_project = project
+        save_config(config)
+    return True
 
 
 def _join_request_path() -> Path:
@@ -314,7 +338,7 @@ def invite(
             "Paste it in your team chat; each person types their own name and email when they run it:",
             fg="green",
         )
-        typer.echo("Nobody gets in by the link alone: each person waits until you approve them "
+        typer.echo("People already in the team join the project at once. Newcomers wait until you approve them "
                    "(`loom requests`, `loom approve <email>`, or the dashboard).")
     where = "" if server == HOSTED_SERVER else f" {server}"
     typer.echo(f"  curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {result['code']}{where}")

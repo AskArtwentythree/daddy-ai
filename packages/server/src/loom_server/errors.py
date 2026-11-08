@@ -12,3 +12,7 @@ class NotFound(Exception):
 
 class InvalidRequest(Exception):
     pass
+
+
+class Conflict(Exception):
+    pass

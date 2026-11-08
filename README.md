@@ -62,6 +62,10 @@ the dashboard, and let them in with `loom approve sri@example.com` (or the dashb
 then finishes by itself, AI apps connected. `loom deny …` turns a stranger away, and a request nobody answers expires
 after a day. The email is only their identity in the team; nothing is ever emailed.
 
+Each project has its own link, and it works for people who are already in your team too: `loom join <link>` (or
+the same install line) simply adds them to that project, straight away, without asking anyone or touching their
+setup. Only newcomers knock.
+
 So if the link ends up somewhere it shouldn't, strangers can only knock. The link works for up to 10 people
 (`--uses 30` for more) for 2 days, and `loom cancel-invite inv_…` stops it early. Agents can't let people in for
 you: the agent guard makes them ask before running `loom approve`.

@@ -37,7 +37,7 @@ from .blobs import get_blob_store
 from .brief import refresh_brief
 from .config import get_settings
 from .db import close_pool, connection, open_pool
-from .errors import InvalidRequest, NotFound, PolicyDenied
+from .errors import Conflict, InvalidRequest, NotFound, PolicyDenied
 from .events import bus
 from .ingestion import FileInput, fetch_github_snapshot, ingest_files, normalize_path, note_path, prune_source
 from .policy import (
@@ -88,6 +88,11 @@ async def _not_found(_: Request, exc: NotFound):
 @app.exception_handler(InvalidRequest)
 async def _invalid(_: Request, exc: InvalidRequest):
     return JSONResponse(status_code=400, content={"error": "invalid", "reason": str(exc)})
+
+
+@app.exception_handler(Conflict)
+async def _conflict(_: Request, exc: Conflict):
+    return JSONResponse(status_code=409, content={"error": "conflict", "reason": str(exc)})
 
 
 # ── Request bodies ────────────────────────────────────────────────────────────
@@ -415,6 +420,53 @@ def join(body: JoinBody, request: Request, response: Response) -> dict:
         "pending": True, "request": str(request_id), "secret": secret, "family": invite["family"], "user": name,
         "approvers": [a["display_name"] for a in approvers], "expires_in_hours": REQUEST_HOURS,
     }
+
+
+@app.post("/api/join/project")
+def join_project(body: CancelInviteBody, actor: Actor = Depends(require_actor)) -> dict:
+    """Someone already in the team uses a project's link: they're trusted, so they're in the project right away."""
+    code_hash = hash_secret((body.code or "").strip())
+    with connection() as conn:
+        team = conn.execute(
+            "SELECT i.workspace_id, w.name FROM invites i JOIN workspaces w ON w.id = i.workspace_id "
+            "WHERE i.code_hash = %s",
+            (code_hash,),
+        ).fetchone()
+    if team is None:
+        raise NotFound("Invite code is invalid")
+    if team["workspace_id"] != actor.workspace_id:
+        raise Conflict(f"This link is for another team, '{team['name']}'")
+    with audited(actor, "project.join") as scope, connection() as conn:
+        invite = conn.execute(
+            """
+            SELECT i.*, w.name AS family FROM invites i JOIN workspaces w ON w.id = i.workspace_id
+            WHERE i.code_hash = %s AND i.used_at IS NULL AND i.expires_at > now()
+            FOR UPDATE OF i
+            """,
+            (code_hash,),
+        ).fetchone()
+        if invite is None:
+            raise PolicyDenied("This invite has expired, was cancelled or was already used")
+        if invite["email"] is not None and invite["email"] != actor.email.lower():
+            raise PolicyDenied(f"This invite is for {invite['display_name']}, not for you")
+        scope.project_id = invite["project_id"]
+        project = _project_slug(conn, invite["project_id"])
+        current = conn.execute(
+            "SELECT role FROM memberships WHERE project_id = %s AND user_id = %s",
+            (invite["project_id"], actor.user_id),
+        ).fetchone() if project else None
+        if project and current is None:
+            conn.execute(
+                "INSERT INTO memberships (project_id, user_id, role) VALUES (%s, %s, %s)",
+                (invite["project_id"], actor.user_id, invite["role"]),
+            )
+            refresh_brief(conn, invite["project_id"])
+        if invite["email"] is not None:
+            conn.execute("UPDATE invites SET uses = uses + 1, used_at = now() WHERE code_hash = %s",
+                         (invite["code_hash"],))
+        scope.detail.update(email=actor.email, already=current is not None or project is None)
+    return {"project": project, "role": current["role"] if current else invite["role"],
+            "already": current is not None or project is None, "family": invite["family"], "user": actor.display_name}
 
 
 @app.post("/api/join/status")

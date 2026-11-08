@@ -120,6 +120,18 @@ def test_connect_cursor_merges_existing_config(tmp_path, monkeypatch):
     assert hooks["beforeSubmitPrompt"] == [{"command": "/opt/loom hook prompt-check"}]
 
 
+def _other_team(joined: dict):
+    """A fake server where the link belongs to another team, so joining it means switching teams."""
+    from loom_cli.client import LoomError
+
+    def post(self, path, body):
+        if path == "/api/join/project":
+            raise LoomError(409, "This link is for another team, 'Test'", "conflict")
+        return joined
+
+    return post
+
+
 def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
     from typer.testing import CliRunner
 
@@ -137,8 +149,7 @@ def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
         return {"family": "acmhack", "user": "Askar"}
 
     monkeypatch.setattr(main.LoomClient, "get", get)
-    monkeypatch.setattr(main.LoomClient, "post", lambda self, path, body: {
-        "token": "dad_new", "user": "Askar", "family": "Test"})
+    monkeypatch.setattr(main.LoomClient, "post", _other_team({"token": "dad_new", "user": "Askar", "family": "Test"}))
     runner = CliRunner()
 
     refused = runner.invoke(main.app, ["join", "inv_x"])
@@ -167,8 +178,7 @@ def test_join_in_a_terminal_asks_before_replacing_the_team(tmp_path, monkeypatch
     save_config(Config(token="dad_old", user="Name", family="Test"))
     monkeypatch.setattr(main, "_can_ask", lambda: True)
     monkeypatch.setattr(main.LoomClient, "get", lambda self, path: {"family": "Test", "user": "Name"})
-    monkeypatch.setattr(main.LoomClient, "post", lambda self, path, body: {
-        "token": "dad_new", "user": "Will", "family": "acmhack"})
+    monkeypatch.setattr(main.LoomClient, "post", _other_team({"token": "dad_new", "user": "Will", "family": "acmhack"}))
     runner = CliRunner()
 
     declined = runner.invoke(main.app, ["join", "inv_x"], input="n\n")
@@ -179,6 +189,38 @@ def test_join_in_a_terminal_asks_before_replacing_the_team(tmp_path, monkeypatch
     assert agreed.exit_code == 0 and "Welcome to the 'acmhack' family, Will!" in agreed.output
     assert load_config().token == "dad_new"
     assert len(list((tmp_path / ".loom").glob("config.backup-*.json"))) == 1
+
+
+def test_a_link_to_a_project_of_my_team_just_adds_it(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from loom_cli import main
+    from loom_cli.client import LoomError
+    from loom_cli.config import load_config, save_config
+
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom"))
+    save_config(Config(token="loom_mine", user="Will", family="acmhack"))
+    calls = []
+
+    def post(self, path, body):
+        calls.append(path)
+        return {"project": "trip-photos", "role": "member", "already": False, "family": "acmhack", "user": "Will"}
+
+    monkeypatch.setattr(main.LoomClient, "post", post)
+    runner = CliRunner()
+    joined = runner.invoke(main.app, ["join", "invX"])
+    assert joined.exit_code == 0 and "You're in the 'trip-photos' project now (member)" in joined.output
+    assert calls == ["/api/join/project"]
+    config = load_config()
+    assert (config.token, config.family, config.default_project) == ("loom_mine", "acmhack", "trip-photos")
+    assert not list((tmp_path / ".loom").glob("config.backup-*.json"))
+
+    def expired(self, path, body):
+        raise LoomError(403, "This invite has expired, was cancelled or was already used", "denied")
+
+    monkeypatch.setattr(main.LoomClient, "post", expired)
+    refused = runner.invoke(main.app, ["join", "invX"])
+    assert refused.exit_code == 1 and "expired" in refused.output
 
 
 def test_join_with_a_team_link_waits_for_approval_and_can_resume(tmp_path, monkeypatch):

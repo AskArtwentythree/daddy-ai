@@ -289,8 +289,9 @@ function inviteMessage(result, form) {
       `The invite is just for you: it works once, for ${result.expires_in_days} days.`;
   }
   return `Join our LoomAI team "${family}"${project}!\n${steps}\n\n` +
-    `It asks for your name and email, then waits until ${state.family.me} lets you in. ` +
-    `Works for up to ${result.max_uses} people for ${result.expires_in_days} days.`;
+    `New to the team? It asks for your name and email, then waits until ${state.family.me} lets you in. ` +
+    `Already in the team? The loom join line adds you to the project straight away. ` +
+    `Works for up to ${result.max_uses} new people for ${result.expires_in_days} days.`;
 }
 
 function setInviteKind(kind) {
@@ -424,6 +425,9 @@ function describe(event) {
       return d.approved_by ? `${esc(d.email)} joined the family, let in by ${esc(d.approved_by)}` : `${esc(d.email)} joined the family`;
     case "family.join_request":
       return `${esc(d.name)} &lt;${esc(d.email)}&gt; asked to join with a team link`;
+    case "project.join":
+      if (!ok) return "tried to join a project with a link";
+      return d.already ? "used a link to a project they were already in" : "joined the project with its link";
     case "join.approve":
       return `let ${esc(d.name)} &lt;${esc(d.email)}&gt; into the family`;
     case "join.deny":
