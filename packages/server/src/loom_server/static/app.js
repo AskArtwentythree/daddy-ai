@@ -206,6 +206,28 @@ async function loadFamily() {
     .catch(console.error);
   renderTree(data);
   renderProjects(data.projects);
+  loadWaiting().catch(console.error);
+}
+
+async function loadWaiting() {
+  const waiting = await api("/api/join/requests");
+  $("#waiting-panel").hidden = waiting.length === 0;
+  $("#waiting").innerHTML = waiting
+    .map((r) => {
+      const where = r.project ? `the ${esc(r.project)} project` : "the family";
+      return `
+      <li class="waiting-item">
+        <div class="who">
+          <strong>${esc(r.name)}</strong> &lt;${esc(r.email)}&gt; wants to join ${where}
+          <span class="about">from ${esc(r.device)} · asked ${relativeTime(r.created_at)} · link by ${esc(r.link_by)}</span>
+        </div>
+        <div class="choices">
+          <button class="let-in" data-request="${esc(r.id)}" data-verdict="approve" data-name="${esc(r.name)}">Let in</button>
+          <button class="turn-away" data-request="${esc(r.id)}" data-verdict="deny" data-name="${esc(r.name)}">Turn away</button>
+        </div>
+      </li>`;
+    })
+    .join("");
 }
 
 // ── Ledger ───────────────────────────────────────────────────────────────────
@@ -270,7 +292,13 @@ function describe(event) {
     case "invite.create":
       return `invited ${esc(d.email)}`;
     case "family.join":
-      return `${esc(d.email)} joined the family`;
+      return d.approved_by ? `${esc(d.email)} joined the family, let in by ${esc(d.approved_by)}` : `${esc(d.email)} joined the family`;
+    case "family.join_request":
+      return `${esc(d.name)} &lt;${esc(d.email)}&gt; asked to join with a team link`;
+    case "join.approve":
+      return `let ${esc(d.name)} &lt;${esc(d.email)}&gt; into the family`;
+    case "join.deny":
+      return `turned away ${esc(d.name)} &lt;${esc(d.email)}&gt;`;
     case "family.create":
       return "founded the family";
     case "project.create":
@@ -355,13 +383,14 @@ function connect() {
   };
   socket.onmessage = (message) => {
     const event = JSON.parse(message.data);
+    if (event.type === "join.request") loadWaiting().catch(console.error);
     if (event.type !== "audit") return;
     const entry = event.event;
     state.events.unshift(entry);
     state.events.length = Math.min(state.events.length, MAX_EVENTS);
     renderLedger(entry.id);
     refreshFigures();
-    if (/^(device|family|member|project|ingest|note|dashboard|agent\.cursor)/.test(entry.action)) refreshFamily();
+    if (/^(device|family|member|project|ingest|note|dashboard|join|agent\.cursor)/.test(entry.action)) refreshFamily();
   };
   socket.onclose = (closeEvent) => {
     if (!state.token) return;
@@ -384,6 +413,20 @@ $("#filters").addEventListener("click", (click) => {
   for (const b of document.querySelectorAll("#filters button")) b.setAttribute("aria-pressed", String(b === button));
   $("#ledger-empty").textContent = state.filter === "stopped" ? "Nothing stopped. All clear." : "Nothing here yet. Ask your agent something.";
   renderLedger();
+});
+
+$("#waiting").addEventListener("click", async (click) => {
+  const button = click.target.closest("button[data-verdict]");
+  if (!button) return;
+  const letIn = button.dataset.verdict === "approve";
+  if (letIn && !confirm(`Let ${button.dataset.name} in? They get access to the project straight away.`)) return;
+  for (const b of button.parentElement.querySelectorAll("button")) b.disabled = true;
+  try {
+    await api(`/api/join/requests/${button.dataset.request}/${button.dataset.verdict}`, { method: "POST" });
+  } catch (error) {
+    alert(error.message);
+  }
+  await loadWaiting().catch(console.error);
 });
 
 $("#tree").addEventListener("click", async (click) => {

@@ -55,6 +55,23 @@ ALTER TABLE invites ALTER COLUMN display_name DROP NOT NULL;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS max_uses integer NOT NULL DEFAULT 1;
 ALTER TABLE invites ADD COLUMN IF NOT EXISTS uses integer NOT NULL DEFAULT 0;
 
+-- Someone who used a team link waits here until a family admin or the project's owner lets them in, so a
+-- leaked link alone gets a stranger nothing. Their computer polls with a secret only it holds (hashed here).
+CREATE TABLE IF NOT EXISTS join_requests (
+    id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    workspace_id  uuid NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+    invite_hash   text NOT NULL REFERENCES invites(code_hash) ON DELETE CASCADE,
+    email         text NOT NULL,
+    display_name  text NOT NULL,
+    device_name   text NOT NULL,
+    secret_hash   text NOT NULL,
+    status        text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'denied', 'joined')),
+    decided_by    uuid REFERENCES users(id) ON DELETE SET NULL,
+    created_at    timestamptz NOT NULL DEFAULT now(),
+    decided_at    timestamptz
+);
+CREATE INDEX IF NOT EXISTS join_requests_workspace_idx ON join_requests (workspace_id, status);
+
 -- A family's own rules for agent actions, checked before the built-in ones in loom_common.guard.
 CREATE TABLE IF NOT EXISTS guard_rules (
     id            uuid PRIMARY KEY DEFAULT gen_random_uuid(),

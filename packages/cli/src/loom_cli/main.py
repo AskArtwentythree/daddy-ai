@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
 import json
 import os
 import platform
 import subprocess
 import sys
+import time
 import webbrowser
 from datetime import datetime
 from pathlib import Path
@@ -26,7 +28,7 @@ from loom_common.version import CLI_VERSION, is_older
 from . import connect as connectors
 from . import render, updates
 from .client import LoomClient, LoomError
-from .config import HOSTED_SERVER, Config, config_path, load_config, save_config
+from .config import HOSTED_SERVER, Config, config_path, home_dir, load_config, save_config
 from .installer import install
 
 app = typer.Typer(help="LoomAI: your team's shared project brain.", no_args_is_help=True)
@@ -40,6 +42,7 @@ app.add_typer(guard_app, name="guard")
 ProjectOpt = Annotated[str | None, typer.Option("--project", "-p", help="Project slug")]
 BATCH_FILES = 150
 BATCH_BYTES = 3_000_000
+JOIN_POLL_SECONDS = 3
 INSTALL_SCRIPT_URL = "https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh"
 
 
@@ -156,22 +159,71 @@ def join(
     _keep_current_connection(config, switch, f"loom join {code}")
     config.server_url = server.rstrip("/")
     client = LoomClient(config)
-    body = {"code": code, "device_name": device or _device_name(), "display_name": name, "email": email}
-    try:
-        result = client.post("/api/join", body)
-    except LoomError as error:
-        if "needs your name and email" not in error.reason:
-            _fail(("Denied: " if error.denied else "Error: ") + error.reason)
-        typer.echo("This is a team link, so tell the team who you are.")
-        body["display_name"] = name or typer.prompt("Your name")
-        body["email"] = email or typer.prompt("Your email")
-        result = _call(client.post, "/api/join", body)
+    result = _pending_join(config.server_url, code)
+    if result is None:
+        body = {"code": code, "device_name": device or _device_name(), "display_name": name, "email": email}
+        try:
+            result = client.post("/api/join", body)
+        except LoomError as error:
+            if "needs your name and email" not in error.reason:
+                _fail(("Denied: " if error.denied else "Error: ") + error.reason)
+            typer.echo("This is a team link, so tell the team who you are.")
+            body["display_name"] = name or typer.prompt("Your name")
+            body["email"] = email or typer.prompt("Your email")
+            result = _call(client.post, "/api/join", body)
+    if result.get("pending"):
+        result = _wait_for_approval(client, config.server_url, code, result)
     if result["family"] != config.family:
         config.default_project = None
     config.token, config.user, config.family = result["token"], result["user"], result["family"]
     save_config(config)
     typer.secho(f"Welcome to the '{result['family']}' family, {result['user']}!", fg="green")
     _next_steps()
+
+
+def _join_request_path() -> Path:
+    return home_dir() / "join-request.json"
+
+
+def _pending_join(server: str, code: str) -> dict | None:
+    """A request this computer already filed with the same team link, so running the command again keeps waiting."""
+    try:
+        saved = json.loads(_join_request_path().read_text())
+    except (OSError, ValueError):
+        return None
+    same = saved.get("server") == server and saved.get("code") == hashlib.sha256(code.encode()).hexdigest()
+    return saved | {"pending": True} if same else None
+
+
+def _wait_for_approval(client: LoomClient, server: str, code: str, request: dict) -> dict:
+    """Team links don't let anyone in by themselves: wait here until an admin or project owner approves."""
+    path = _join_request_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    saved = {key: request[key] for key in ("request", "secret", "family", "user")}
+    path.write_text(json.dumps(saved | {"server": server, "code": hashlib.sha256(code.encode()).hexdigest()}))
+    path.chmod(0o600)
+    who = " or ".join(request.get("approvers") or []) or "an admin"
+    typer.secho(f"Asked to join '{request['family']}' as {request['user']}.", fg="green")
+    typer.echo(f"Waiting for {who} to let you in (they've been told)… You can close this and run the same "
+               "command again later to keep waiting.")
+    poll = {"request": request["request"], "secret": request["secret"]}
+    try:
+        while True:
+            try:
+                result = client.post("/api/join/status", poll)
+            except LoomError as error:
+                if error.status in (403, 404):
+                    path.unlink(missing_ok=True)
+                    _fail(("Denied: " if error.denied else "Error: ") + error.reason)
+                time.sleep(JOIN_POLL_SECONDS)  # the server is briefly unreachable: keep waiting
+                continue
+            if result["status"] == "joined":
+                path.unlink(missing_ok=True)
+                return result
+            time.sleep(JOIN_POLL_SECONDS)
+    except KeyboardInterrupt:
+        typer.echo(f"\nStill waiting for approval. To check again: loom join {code}")
+        raise typer.Exit(1) from None
 
 
 def _next_steps() -> None:
@@ -228,7 +280,7 @@ def invite(
     name: Annotated[str | None, typer.Option("--name", "-n", help="Their display name")] = None,
     project: ProjectOpt = None,
     role: Annotated[str, typer.Option(help="owner, member or viewer")] = "member",
-    uses: Annotated[int, typer.Option(help="How many people a team link lets in")] = 20,
+    uses: Annotated[int, typer.Option(help="How many people a team link lets in")] = 10,
 ) -> None:
     """Invite people: `loom invite -p my-app` gives one team link; `loom invite sri@x.com -n Sri` a personal one."""
     if email and not name:
@@ -249,6 +301,8 @@ def invite(
             "Paste it in your team chat; each person types their own name and email when they run it:",
             fg="green",
         )
+        typer.echo("Nobody gets in by the link alone: each person waits until you approve them "
+                   "(`loom requests`, `loom approve <email>`, or the dashboard).")
     where = "" if server == HOSTED_SERVER else f" {server}"
     typer.echo(f"  curl -fsSL {INSTALL_SCRIPT_URL} | sh -s -- {result['code']}{where}")
     typer.echo("If they already have the `loom` command:")
@@ -268,6 +322,49 @@ def cancel_invite(code: str) -> None:
     """Stop an invite or team link from working; people who already joined stay."""
     result = _call(_client().post, "/api/invites/cancel", {"code": code})
     typer.echo(f"Cancelled. {result['used_by']} people had joined with it.")
+
+
+@app.command()
+def requests() -> None:
+    """People who used a team link and are waiting for you to let them in."""
+    waiting = _call(_client().get, "/api/join/requests")
+    if not waiting:
+        typer.echo("Nobody is waiting to join.")
+        return
+    for request in waiting:
+        typer.echo(f"{render.describe_request(request)} (asked {str(request['created_at'])[11:16]}, link by "
+                   f"{request['link_by']})")
+    typer.echo("Let someone in: loom approve <email>   Turn them away: loom deny <email>")
+
+
+def _decide_join(who: str, verdict: str) -> None:
+    client = _client()
+    waiting = _call(client.get, "/api/join/requests")
+    needle = who.strip().lower()
+    matches = [r for r in waiting if needle in (r["email"], r["name"].lower(), str(r["id"]))]
+    if not matches:
+        _fail(f"Nobody called '{who}' is waiting to join. See `loom requests`.")
+    if len(matches) > 1:
+        _fail(f"More than one person matches '{who}'; use their email: "
+              + ", ".join(r["email"] for r in matches))
+    request = matches[0]
+    _call(client.post, f"/api/join/requests/{request['id']}/{verdict}")
+    if verdict == "approve":
+        typer.secho(f"Let {request['name']} in. Their setup finishes by itself in a few seconds.", fg="green")
+    else:
+        typer.echo(f"Turned {request['name']} away; their link no longer works for them.")
+
+
+@app.command()
+def approve(who: Annotated[str, typer.Argument(help="Their email or name, from `loom requests`")]) -> None:
+    """Let in someone who is waiting to join with a team link."""
+    _decide_join(who, "approve")
+
+
+@app.command()
+def deny(who: Annotated[str, typer.Argument(help="Their email or name, from `loom requests`")]) -> None:
+    """Turn away someone who is waiting to join with a team link."""
+    _decide_join(who, "deny")
 
 
 # ── Projects ──────────────────────────────────────────────────────────────────

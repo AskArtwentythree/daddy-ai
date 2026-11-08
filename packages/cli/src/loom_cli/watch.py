@@ -21,7 +21,7 @@ import websockets
 from loom_common.files import from_payload
 from loom_common.version import CLI_VERSION, is_older
 
-from . import updates
+from . import render, updates
 from .client import LoomClient, LoomError
 from .config import Config
 from .installer import install
@@ -146,6 +146,19 @@ class Watcher:
         for item in reversed(waiting):
             self._show_delivery(item)
 
+    def _show_join_request(self, request: dict) -> None:
+        self.echo(f"🚪 {render.describe_request(request)}")
+        self.echo(f"   let them in: loom approve {request['email']}   turn away: loom deny {request['email']}")
+        notify("LoomAI", f"{request['name']} wants to join. Run: loom approve {request['email']}")
+
+    def _show_join_requests(self) -> None:
+        try:
+            waiting = self.client.get("/api/join/requests")
+        except LoomError:
+            return
+        for request in waiting:
+            self._show_join_request(request)
+
     def handle(self, event: dict) -> bool:
         """Process one pushed event; returns False when watching should stop."""
         kind = event.get("type")
@@ -157,6 +170,9 @@ class Watcher:
                 if updates.due(latest, "watch"):
                     notify("LoomAI update", updates.notice(latest))
             self._show_waiting()
+            self._show_join_requests()
+        elif kind == "join.request":
+            self._show_join_request(event["request"])
         elif kind == "delivery.new":
             self._show_delivery(event["delivery"])
         elif kind in ("delivery.accepted", "delivery.declined"):

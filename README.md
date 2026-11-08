@@ -56,12 +56,15 @@ This prints **one team link**. Paste it into your team chat. Each teammate paste
 curl -fsSL https://raw.githubusercontent.com/AskArtwentythree/loom-ai/main/install.sh | sh -s -- inv_…
 ```
 
-It asks for their name and email, then puts them in your team and in `my-app` with their AI apps connected. The email
-is only their identity in the team; nothing is ever emailed.
+It asks for their name and email, then waits for you: **nobody gets in by the link alone.** You see "Sri
+<sri@example.com> on Sri's MacBook wants to join my-app" in your `loom watch` window, in your agent's inbox and on
+the dashboard, and let them in with `loom approve sri@example.com` (or the dashboard's *Let in* button). Their setup
+then finishes by itself, AI apps connected. `loom deny …` turns a stranger away, and a request nobody answers expires
+after a day. The email is only their identity in the team; nothing is ever emailed.
 
-The link lets in up to 20 people (`--uses 50` for more) and expires after 7 days. Treat it like a password for
-your team chat: anyone who has it can join. You see everyone who joined in `loom status`, the dashboard and the audit
-log, `loom revoke` cuts off a computer, and `loom cancel-invite inv_…` stops the link early.
+So if the link ends up somewhere it shouldn't, strangers can only knock. The link works for up to 10 people
+(`--uses 30` for more) for 2 days, and `loom cancel-invite inv_…` stops it early. Agents can't let people in for
+you: the agent guard makes them ask before running `loom approve`.
 
 For one specific person, `loom invite sri@example.com --name Sri -p my-app` makes a personal invite that works once.
 Personal invites can also make someone a project owner (`--role owner`); team links can't.
@@ -100,6 +103,7 @@ You rarely need these, but they're there:
 | `loom project create "Name"` | A new project; you become its owner |
 | `loom project add-member my-app sri@example.com` | Give someone already in the team access to a project |
 | `loom invite -p my-app` | One team link for your chat (or `loom invite sri@example.com -n Sri` for one person) |
+| `loom requests` / `loom approve <email>` / `loom deny <email>` | See who's waiting to join with a team link; let them in or turn them away |
 | `loom cancel-invite inv_…` | Stop an invite or team link from working |
 | `loom devices` / `loom revoke <id>` | See connected computers and cut one off instantly |
 | `loom audit -f` | Live log of every agent action (admins) |
@@ -118,8 +122,10 @@ name for `loom`.
 - **`loom: command not found`**: open a new terminal, or use the full path the installer printed.
 - **The agent doesn't know about Loom**: run `loom connect all`. In Cursor, open a new chat; in Claude Code, start a
   new session; if it still doesn't show up, quit the app fully and open it again.
-- **"Invite expired or already used"**: ask for a new one. Invites last 7 days; a personal invite works once and a
-  team link until it's full.
+- **"Invite expired or already used"**: ask for a new one. A personal invite works once within 7 days, a team link
+  for 2 days until it's full.
+- **Stuck at "Waiting for … to let you in"**: the admin hasn't approved you yet. You can close the terminal; running
+  the same command again keeps waiting.
 - **"…is already in this team"**: that email already joined, so a team link can't add it again. To add another
   computer for the same person, the admin sends a personal invite.
 - **"This computer is already connected to the '…' family"**: a computer has one main team, and joining another

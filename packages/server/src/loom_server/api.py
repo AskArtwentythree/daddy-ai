@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import UUID
 
-from fastapi import BackgroundTasks, Depends, FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, Depends, FastAPI, Request, Response, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 
 from loom_common import guard
 from loom_common.secrets import scan_text
-from loom_common.version import CLI_VERSION, cli_version_of
+from loom_common.version import CLI_VERSION, JOIN_APPROVAL_SINCE, cli_version_of, is_older
 
 from . import delivery, retrieval
 from .audit import AuditScope, audited, record
@@ -108,11 +108,16 @@ class InviteBody(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=80)
     project: str | None = None
     role: Role = "member"
-    max_uses: int = Field(default=20, ge=1, le=200)
+    max_uses: int = Field(default=10, ge=1, le=200)
 
 
 class CancelInviteBody(BaseModel):
     code: str
+
+
+class JoinStatusBody(BaseModel):
+    request: UUID
+    secret: str
 
 
 class JoinBody(BaseModel):
@@ -283,6 +288,7 @@ def create_invite(body: InviteBody, actor: Actor = Depends(require_actor)) -> di
         if not team_link and not body.display_name:
             raise InvalidRequest("A personal invite needs the person's name")
         max_uses = body.max_uses if team_link else 1
+        days = TEAM_LINK_DAYS if team_link else INVITE_DAYS
         code, code_hash = new_secret(INVITE_PREFIX)
         conn.execute(
             """
@@ -291,9 +297,9 @@ def create_invite(body: InviteBody, actor: Actor = Depends(require_actor)) -> di
             VALUES (%s, %s, lower(%s), %s, %s, %s, %s, %s, %s)
             """,
             (code_hash, actor.workspace_id, body.email, body.display_name, project_id, body.role,
-             actor.user_id, datetime.now(UTC) + timedelta(days=7), max_uses),
+             actor.user_id, datetime.now(UTC) + timedelta(days=days), max_uses),
         )
-    return {"code": code, "expires_in_days": 7, "max_uses": max_uses}
+    return {"code": code, "expires_in_days": days, "max_uses": max_uses, "needs_approval": team_link}
 
 
 @app.post("/api/invites/cancel")
@@ -312,8 +318,14 @@ def cancel_invite(body: CancelInviteBody, actor: Actor = Depends(require_actor))
     return {"cancelled": True, "used_by": row["uses"]}
 
 
+TEAM_LINK_DAYS = 2
+INVITE_DAYS = 7
+REQUEST_HOURS = 24  # a join request nobody answers in this time expires
+
+
 @app.post("/api/join")
-def join(body: JoinBody) -> dict:
+def join(body: JoinBody, request: Request, response: Response) -> dict:
+    """A personal invite lets its person straight in; a team link only files a request an approver must accept."""
     with connection() as conn:
         invite = conn.execute(
             """
@@ -325,44 +337,189 @@ def join(body: JoinBody) -> dict:
         ).fetchone()
         if invite is None:
             raise PolicyDenied("Invite code is invalid, expired or already used")
-        email, name = invite["email"], invite["display_name"]
-        if email is None:
+        if invite["email"] is not None:
+            user_id = _add_member(conn, invite, invite["email"], invite["display_name"])
+            token = _issue_device(conn, user_id, body.device_name)
+            email, name = invite["email"], invite["display_name"]
+        else:
             email, name = (body.email or "").strip().lower(), (body.display_name or "").strip()
             if "@" not in email or not name:
                 raise InvalidRequest("This team link needs your name and email")
-            taken = conn.execute(
-                "SELECT 1 FROM users WHERE workspace_id = %s AND email = %s", (invite["workspace_id"], email)
-            ).fetchone()
-            if taken:
-                raise PolicyDenied(f"{email} is already in this team; ask its admin for a personal invite")
-        user_id = conn.execute(
-            """
-            INSERT INTO users (workspace_id, email, display_name) VALUES (%s, %s, %s)
-            ON CONFLICT (workspace_id, email) DO UPDATE SET display_name = users.display_name
-            RETURNING id
-            """,
-            (invite["workspace_id"], email, name),
-        ).fetchone()["id"]
-        if invite["project_id"]:
-            conn.execute(
-                """
-                INSERT INTO memberships (project_id, user_id, role) VALUES (%s, %s, %s)
-                ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role
+            client_version = cli_version_of(request.headers.get("user-agent"))
+            if client_version and is_older(client_version, JOIN_APPROVAL_SINCE):
+                raise InvalidRequest("Team links now wait for an admin to approve you, and this loom is too old for "
+                                     "that. Paste the LoomAI install line again (or run `loom update`), then retry.")
+            _refuse_taken_email(conn, invite["workspace_id"], email)
+            conn.execute("DELETE FROM join_requests WHERE invite_hash = %s AND email = %s AND status = 'pending'",
+                         (invite["code_hash"], email))
+            waiting = conn.execute(
+                f"""
+                SELECT count(*) AS n FROM join_requests WHERE invite_hash = %s AND status IN ('pending', 'approved')
+                  AND created_at > now() - interval '{REQUEST_HOURS} hours'
                 """,
-                (invite["project_id"], user_id, invite["role"]),
-            )
-            refresh_brief(conn, invite["project_id"])
+                (invite["code_hash"],),
+            ).fetchone()["n"]
+            if invite["uses"] + waiting >= invite["max_uses"]:
+                raise PolicyDenied("This team link is full; ask the team for a new one")
+            secret, secret_hash = new_secret("req_")
+            request_id = conn.execute(
+                """
+                INSERT INTO join_requests (workspace_id, invite_hash, email, display_name, device_name, secret_hash)
+                VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
+                """,
+                (invite["workspace_id"], invite["code_hash"], email, name, body.device_name, secret_hash),
+            ).fetchone()["id"]
+            approvers = _approvers(conn, invite["workspace_id"], invite["project_id"])
+            project = _project_slug(conn, invite["project_id"])
+    if invite["email"] is not None:
+        record(None, "family.join", "allow", workspace_id=invite["workspace_id"], project_id=invite["project_id"],
+               detail={"email": email, "device": body.device_name, "team_link": False})
+        return {"token": token, "family": invite["family"], "user": name}
+
+    asking = {"id": str(request_id), "name": name, "email": email, "device": body.device_name, "project": project}
+    record(None, "family.join_request", "allow", workspace_id=invite["workspace_id"],
+           project_id=invite["project_id"], detail={k: v for k, v in asking.items() if k != "id"})
+    for approver in approvers:
+        bus.to_user(approver["id"], {"type": "join.request", "request": asking})
+    response.status_code = 202
+    return {
+        "pending": True, "request": str(request_id), "secret": secret, "family": invite["family"], "user": name,
+        "approvers": [a["display_name"] for a in approvers], "expires_in_hours": REQUEST_HOURS,
+    }
+
+
+@app.post("/api/join/status")
+def join_status(body: JoinStatusBody) -> dict:
+    """Polled by the waiting computer; hands out its token once, after an approver said yes."""
+    with connection() as conn:
+        request = conn.execute(
+            f"""
+            SELECT r.*, i.project_id, i.role, w.name AS family, u.display_name AS decider,
+                   r.created_at < now() - interval '{REQUEST_HOURS} hours' AS expired
+            FROM join_requests r JOIN invites i ON i.code_hash = r.invite_hash
+            JOIN workspaces w ON w.id = r.workspace_id LEFT JOIN users u ON u.id = r.decided_by
+            WHERE r.id = %s AND r.secret_hash = %s
+            FOR UPDATE OF r
+            """,
+            (body.request, hash_secret(body.secret)),
+        ).fetchone()
+        if request is None:
+            raise NotFound("No such join request")
+        if request["status"] == "denied":
+            raise PolicyDenied(f"{request['decider'] or 'An admin'} declined your request to join")
+        if request["status"] == "joined":
+            raise PolicyDenied("This request was already used to join")
+        if request["status"] == "pending":
+            if request["expired"]:
+                raise PolicyDenied(f"Nobody approved your request within {REQUEST_HOURS} hours; ask for a new link")
+            return {"status": "pending"}
+        _refuse_taken_email(conn, request["workspace_id"], request["email"])
+        user_id = _add_member(conn, request, request["email"], request["display_name"],
+                              invite_hash=request["invite_hash"])
+        token = _issue_device(conn, user_id, request["device_name"])
+        conn.execute("UPDATE join_requests SET status = 'joined' WHERE id = %s", (request["id"],))
+    record(None, "family.join", "allow", workspace_id=request["workspace_id"], project_id=request["project_id"],
+           detail={"email": request["email"], "device": request["device_name"], "team_link": True,
+                   "approved_by": request["decider"]})
+    return {"status": "joined", "token": token, "family": request["family"], "user": request["display_name"]}
+
+
+@app.get("/api/join/requests")
+def join_requests(actor: Actor = Depends(require_actor)) -> list[dict]:
+    """Requests this person may decide on: all of the family's for admins, their projects' for owners."""
+    with connection() as conn:
+        return conn.execute(
+            f"""
+            SELECT r.id, r.display_name AS name, r.email, r.device_name AS device, r.created_at,
+                   p.slug AS project, c.display_name AS link_by
+            FROM join_requests r JOIN invites i ON i.code_hash = r.invite_hash
+            LEFT JOIN projects p ON p.id = i.project_id JOIN users c ON c.id = i.created_by
+            WHERE r.workspace_id = %s AND r.status = 'pending'
+              AND r.created_at > now() - interval '{REQUEST_HOURS} hours'
+              AND (%s OR i.project_id IN (SELECT project_id FROM memberships WHERE user_id = %s AND role = 'owner'))
+            ORDER BY r.created_at
+            """,
+            (actor.workspace_id, actor.is_admin, actor.user_id),
+        ).fetchall()
+
+
+@app.post("/api/join/requests/{request_id}/{verdict}")
+def decide_join(request_id: UUID, verdict: Literal["approve", "deny"], actor: Actor = Depends(require_actor)) -> dict:
+    with audited(actor, f"join.{verdict}") as scope, connection() as conn:
+        request = conn.execute(
+            f"""
+            SELECT r.id, r.display_name, r.email, r.device_name, i.project_id,
+                   EXISTS (SELECT 1 FROM memberships m WHERE m.project_id = i.project_id
+                           AND m.user_id = %s AND m.role = 'owner') AS owner
+            FROM join_requests r JOIN invites i ON i.code_hash = r.invite_hash
+            WHERE r.id = %s AND r.workspace_id = %s AND r.status = 'pending'
+              AND r.created_at > now() - interval '{REQUEST_HOURS} hours'
+            FOR UPDATE OF r
+            """,
+            (actor.user_id, request_id, actor.workspace_id),
+        ).fetchone()
+        if request is None:
+            raise NotFound("No waiting request with that id; it may have been answered or expired")
+        scope.project_id = request["project_id"]
+        scope.detail.update(name=request["display_name"], email=request["email"], device=request["device_name"])
+        if not (actor.is_admin or request["owner"]):
+            raise PolicyDenied("Only family admins and the project's owners can let people in")
+        conn.execute(
+            "UPDATE join_requests SET status = %s, decided_by = %s, decided_at = now() WHERE id = %s",
+            ("approved" if verdict == "approve" else "denied", actor.user_id, request_id),
+        )
+    return {"request": str(request_id), "name": request["display_name"], "email": request["email"],
+            "status": "approved" if verdict == "approve" else "denied"}
+
+
+def _refuse_taken_email(conn, workspace_id: UUID, email: str) -> None:
+    taken = conn.execute("SELECT 1 FROM users WHERE workspace_id = %s AND email = %s", (workspace_id, email))
+    if taken.fetchone():
+        raise PolicyDenied(f"{email} is already in this team; ask its admin for a personal invite")
+
+
+def _add_member(conn, invite: dict, email: str, name: str, *, invite_hash: str | None = None) -> UUID:
+    """Create the user (or find them), add them to the invite's project and count one use of the invite."""
+    user_id = conn.execute(
+        """
+        INSERT INTO users (workspace_id, email, display_name) VALUES (%s, %s, %s)
+        ON CONFLICT (workspace_id, email) DO UPDATE SET display_name = users.display_name
+        RETURNING id
+        """,
+        (invite["workspace_id"], email, name),
+    ).fetchone()["id"]
+    if invite["project_id"]:
         conn.execute(
             """
-            UPDATE invites SET uses = uses + 1, used_at = CASE WHEN uses + 1 >= max_uses THEN now() END
-            WHERE code_hash = %s
+            INSERT INTO memberships (project_id, user_id, role) VALUES (%s, %s, %s)
+            ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role
             """,
-            (invite["code_hash"],),
+            (invite["project_id"], user_id, invite["role"]),
         )
-        token = _issue_device(conn, user_id, body.device_name)
-    record(None, "family.join", "allow", workspace_id=invite["workspace_id"],
-           detail={"email": email, "device": body.device_name, "team_link": invite["email"] is None})
-    return {"token": token, "family": invite["family"], "user": name}
+        refresh_brief(conn, invite["project_id"])
+    conn.execute(
+        "UPDATE invites SET uses = uses + 1, used_at = CASE WHEN uses + 1 >= max_uses THEN now() END "
+        "WHERE code_hash = %s",
+        (invite_hash or invite["code_hash"],),
+    )
+    return user_id
+
+
+def _approvers(conn, workspace_id: UUID, project_id: UUID | None) -> list[dict]:
+    return conn.execute(
+        """
+        SELECT id, display_name FROM users WHERE workspace_id = %s AND (is_admin OR id IN (
+            SELECT user_id FROM memberships WHERE project_id = %s AND role = 'owner'))
+        ORDER BY is_admin DESC, display_name
+        """,
+        (workspace_id, project_id),
+    ).fetchall()
+
+
+def _project_slug(conn, project_id: UUID | None) -> str | None:
+    if project_id is None:
+        return None
+    return conn.execute("SELECT slug FROM projects WHERE id = %s", (project_id,)).fetchone()["slug"]
 
 
 @app.get("/api/me")

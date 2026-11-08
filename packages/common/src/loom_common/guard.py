@@ -58,6 +58,8 @@ BUILTIN_RULES: tuple[Rule, ...] = (
          "Rewrites shared git history"),
     Rule("shell", r"\bterraform\s+destroy\b|\bkubectl\s+delete\b|\bdrop\s+(?:database|table|schema)\b"
          r"|\baws\s+\S+\s+delete-\S+|\baws\s+s3\s+(?:rm|rb)\b", "ask", "Deletes infrastructure or data"),
+    Rule("shell", r"\b(?:loom|daddy)\s+approve\b|/api/join/requests/\S+/approve", "ask",
+         "Lets someone into the team; only a person should decide that"),
     Rule("shell", _SEGMENT_START + r"sudo\b", "ask", "Runs with administrator rights"),
     Rule("shell", _SEGMENT_START + r"(?:printenv|env)\s*(?:$|[;&|])", "ask",
          "Prints every environment variable, secrets included"),

@@ -248,9 +248,16 @@ async def check_inbox(ctx: Context) -> str:
     """List files, skills and messages teammates have sent to the user that are not yet handled."""
     client = _client(ctx)
     try:
-        return _with_update_note(client, render.inbox(await _api(lambda: client.get("/api/inbox"))))
+        text = render.inbox(await _api(lambda: client.get("/api/inbox")))
+        waiting = await _api(lambda: client.get("/api/join/requests"))
     except LoomError as error:
         return _failure(error)
+    if waiting:
+        lines = "\n".join(f"- {render.describe_request(r)}" for r in waiting)
+        text += (f"\n\nWaiting to join the team ({len(waiting)}):\n{lines}\n"
+                 "Tell the user. Only they decide: they run `loom approve <email>` or `loom deny <email>` in a "
+                 "terminal themselves, or use the dashboard.")
+    return _with_update_note(client, text)
 
 
 @mcp.tool()

@@ -1,6 +1,6 @@
 [project]
 name = "loom-cli"
-version = "0.4.0"
+version = "0.5.0"
 description = "LoomAI CLI: connects a computer's AI agents to the family gateway"
 requires-python = ">=3.12"
 dependencies = [

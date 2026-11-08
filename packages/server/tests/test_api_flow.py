@@ -110,6 +110,14 @@ def _new_family(api, monkeypatch, family: str, name: str) -> str:
     return token
 
 
+def _join_team_link(api, admin: str, body: dict) -> str:
+    """Ask with a team link, have the admin approve, and collect the new member's token."""
+    request = api.post("/api/join", json=body).json()
+    api.post(f"/api/join/requests/{request['request']}/approve", headers=auth(admin))
+    poll = {"request": request["request"], "secret": request["secret"]}
+    return api.post("/api/join/status", json=poll).json()["token"]
+
+
 def test_open_signup_families_are_isolated(api, monkeypatch):
     zed = _new_family(api, monkeypatch, "Other Team", "Zed")
 
@@ -126,34 +134,62 @@ def test_open_signup_families_are_isolated(api, monkeypatch):
     assert {e["user"] for e in api.get("/api/audit", headers=auth(zed)).json()} <= {"Zed", None}
 
 
-def test_team_link_lets_several_people_join(api, monkeypatch):
+def test_team_link_people_wait_for_approval(api, monkeypatch):
     kim = _new_family(api, monkeypatch, "Link Team", "Kim")
     api.post("/api/projects", json={"name": "Demo"}, headers=auth(kim))
     assert api.post("/api/invites", headers=auth(kim), json={"project": "demo", "role": "owner"}).status_code == 400
     link = api.post("/api/invites", headers=auth(kim), json={"project": "demo", "max_uses": 2}).json()
-    assert link["max_uses"] == 2
+    assert (link["max_uses"], link["expires_in_days"], link["needs_approval"]) == (2, 2, True)
 
-    def join(email, name):
-        body = {"code": link["code"], "device_name": "d", "email": email, "display_name": name}
+    def ask(email, name):
+        body = {"code": link["code"], "device_name": "laptop", "email": email, "display_name": name}
         return api.post("/api/join", json=body)
 
-    assert api.post("/api/join", json={"code": link["code"], "device_name": "d"}).status_code == 400
-    assert join("kim@example.com", "Not Kim").status_code == 403
-    lee = join("lee@example.com", "Lee").json()["token"]
-    assert join("max@example.com", "Max").status_code == 200
-    assert join("ned@example.com", "Ned").status_code == 403
-    assert [p["slug"] for p in api.get("/api/projects", headers=auth(lee)).json()] == ["demo"]
+    def status(request, poll_with=None):
+        body = {"request": request["request"], "secret": poll_with or request["secret"]}
+        return api.post("/api/join/status", json=body)
 
-    again = api.post("/api/invites", headers=auth(kim), json={"project": "demo"}).json()["code"]
-    assert api.post("/api/invites/cancel", headers=auth(lee), json={"code": again}).status_code == 404
-    assert api.post("/api/invites/cancel", headers=auth(kim), json={"code": again}).json()["cancelled"]
-    body = {"code": again, "device_name": "d", "email": "ola@example.com", "display_name": "Ola"}
+    assert api.post("/api/join", json={"code": link["code"], "device_name": "d"}).status_code == 400
+    assert ask("kim@example.com", "Not Kim").status_code == 403
+    old_cli = api.post("/api/join", headers={"User-Agent": "loom-cli/0.4.0"}, json={
+        "code": link["code"], "device_name": "d", "email": "old@example.com", "display_name": "Old"})
+    assert old_cli.status_code == 400 and "too old" in old_cli.json()["reason"]
+    lee = ask("lee@example.com", "Lee")
+    assert lee.status_code == 202 and "token" not in lee.json() and lee.json()["approvers"] == ["Kim"]
+    lee = lee.json()
+    assert status(lee).json() == {"status": "pending"}
+    assert status(lee, poll_with=lee["secret"][::-1]).status_code == 404
+    stranger = ask("eve@example.com", "Eve").json()
+    assert ask("ned@example.com", "Ned").status_code == 403  # two places, two people already waiting
+
+    waiting = [(r["name"], r["project"], r["device"]) for r in api.get("/api/join/requests", headers=auth(kim)).json()]
+    assert waiting == [("Lee", "demo", "laptop"), ("Eve", "demo", "laptop")]
+    assert api.post(f"/api/join/requests/{lee['request']}/approve", headers=auth(kim)).json()["status"] == "approved"
+    assert api.post(f"/api/join/requests/{stranger['request']}/deny", headers=auth(kim)).status_code == 200
+    assert "declined" in status(stranger).json()["reason"]
+
+    joined = status(lee).json()
+    assert joined["status"] == "joined" and joined["user"] == "Lee"
+    assert status(lee).status_code == 403  # the token is handed out once
+    lee_token = joined["token"]
+    assert [p["slug"] for p in api.get("/api/projects", headers=auth(lee_token)).json()] == ["demo"]
+    assert api.get("/api/join/requests", headers=auth(lee_token)).json() == []
+    max_ = ask("max@example.com", "Max").json()
+    assert api.post(f"/api/join/requests/{max_['request']}/approve", headers=auth(lee_token)).status_code == 403
+    actions = {e["action"] for e in api.get("/api/audit", headers=auth(kim)).json()}
+    assert {"family.join_request", "join.approve", "join.deny", "family.join"} <= actions
+
+    again = api.post("/api/invites", headers=auth(kim), json={"project": "demo"}).json()
+    assert again["max_uses"] == 10
+    assert api.post("/api/invites/cancel", headers=auth(lee_token), json={"code": again["code"]}).status_code == 404
+    assert api.post("/api/invites/cancel", headers=auth(kim), json={"code": again["code"]}).json()["cancelled"]
+    body = {"code": again["code"], "device_name": "d", "email": "ola@example.com", "display_name": "Ola"}
     assert api.post("/api/join", json=body).status_code == 403
 
     personal = api.post(
         "/api/invites", headers=auth(kim), json={"email": "pat@example.com", "display_name": "Pat"}
     ).json()
-    assert personal["max_uses"] == 1
+    assert (personal["max_uses"], personal["expires_in_days"], personal["needs_approval"]) == (1, 7, False)
     assert api.post("/api/join", json={"code": personal["code"], "device_name": "d"}).json()["user"] == "Pat"
     assert api.post("/api/join", json={"code": personal["code"], "device_name": "d"}).status_code == 403
 
@@ -163,7 +199,7 @@ def test_rename(api, monkeypatch):
     api.post("/api/projects", json={"name": "Club"}, headers=auth(ana))
     link = api.post("/api/invites", headers=auth(ana), json={"project": "club", "max_uses": 1}).json()["code"]
     body = {"code": link, "device_name": "d", "email": "ben@example.com", "display_name": "Ben"}
-    ben = api.post("/api/join", json=body).json()["token"]
+    ben = _join_team_link(api, ana, body)
 
     def rename(token, name):
         return api.post("/api/me/name", headers=auth(token), json={"display_name": name})
@@ -189,7 +225,7 @@ def test_photos_and_pdfs_travel_byte_for_byte(api, monkeypatch):
     api.post("/api/projects", json={"name": "Pics"}, headers=auth(pia))
     link = api.post("/api/invites", headers=auth(pia), json={"project": "pics", "max_uses": 1}).json()["code"]
     body = {"code": link, "device_name": "d", "email": "quinn@example.com", "display_name": "Quinn"}
-    quinn = api.post("/api/join", json=body).json()["token"]
+    quinn = _join_team_link(api, pia, body)
 
     photo = b"\x89PNG\r\n\x1a\n" + bytes(range(256)) * 400
     encoded = base64.b64encode(photo).decode()
@@ -222,7 +258,7 @@ def test_guard_decides_audits_and_follows_family_rules(api, monkeypatch):
     other = _new_family(api, monkeypatch, "Unrelated Team", "Una")
     link = api.post("/api/invites", headers=auth(gus), json={"max_uses": 1}).json()["code"]
     body = {"code": link, "device_name": "d", "email": "mo@example.com", "display_name": "Mo"}
-    mo = api.post("/api/join", json=body).json()["token"]
+    mo = _join_team_link(api, gus, body)
 
     def check(token, kind, target):
         return api.post("/api/guard", headers=auth(token), json={"kind": kind, "target": target}).json()

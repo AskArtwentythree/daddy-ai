@@ -7,8 +7,9 @@ from __future__ import annotations
 
 import re
 
-CLI_VERSION = "0.4.0"
+CLI_VERSION = "0.5.0"
 BINARY_FILES_SINCE = "0.2.0"
+JOIN_APPROVAL_SINCE = "0.5.0"  # team links wait for an approver from here on
 
 _CLI_AGENT = re.compile(r"(?:loom|daddy)-cli/(\d+(?:\.\d+)*)")  # daddy-cli: before the rename
 

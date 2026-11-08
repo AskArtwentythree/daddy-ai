@@ -45,8 +45,8 @@ class _FakeInboxClient:
         self.waiting, self.contents, self.accepted = waiting, contents, []
 
     def get(self, path, **params):
-        assert path == "/api/inbox"
-        return self.waiting
+        assert path in ("/api/inbox", "/api/join/requests")
+        return self.waiting if path == "/api/inbox" else []
 
     def post(self, path):
         delivery_id = path.split("/")[3]
@@ -154,6 +154,53 @@ def test_join_never_silently_replaces_a_working_team(tmp_path, monkeypatch):
 
     alive["ok"] = False
     assert runner.invoke(main.app, ["join", "inv_y"]).exit_code == 0
+
+
+def test_join_with_a_team_link_waits_for_approval_and_can_resume(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+
+    from loom_cli import main
+    from loom_cli.client import LoomError
+    from loom_cli.config import load_config
+
+    monkeypatch.setenv("LOOM_HOME", str(tmp_path / ".loom"))
+    monkeypatch.setattr(main, "JOIN_POLL_SECONDS", 0)
+    calls = []
+    answers = iter([{"status": "pending"}, KeyboardInterrupt(), {"status": "pending"},
+                    {"status": "joined", "token": "loom_new", "user": "Lee", "family": "Team"}])
+
+    def post(self, path, body):
+        calls.append(path)
+        if path == "/api/join":
+            return {"pending": True, "request": "r1", "secret": "s1", "family": "Team", "user": "Lee",
+                    "approvers": ["Kim"]}
+        answer = next(answers)
+        if isinstance(answer, BaseException):
+            raise answer
+        return answer
+
+    monkeypatch.setattr(main.LoomClient, "post", post)
+    runner = CliRunner()
+    first = runner.invoke(main.app, ["join", "inv_x", "--name", "Lee", "--email", "lee@example.com"])
+    assert first.exit_code == 1 and "Waiting for Kim" in first.output and "loom join inv_x" in first.output
+    assert load_config().token is None
+
+    second = runner.invoke(main.app, ["join", "inv_x"])
+    assert second.exit_code == 0, second.output
+    assert calls.count("/api/join") == 1  # the second run kept waiting on the same request
+    assert load_config().token == "loom_new"
+    assert not (tmp_path / ".loom" / "join-request.json").exists()
+
+    def denied(self, path, body):
+        if path == "/api/join":
+            return {"pending": True, "request": "r2", "secret": "s2", "family": "Team", "user": "Eve"}
+        raise LoomError(403, "Kim declined your request to join", "denied")
+
+    monkeypatch.setattr(main.LoomClient, "post", denied)
+    monkeypatch.setattr(main.LoomClient, "get", lambda self, path: {"family": "Team", "user": "Lee"})
+    refused = runner.invoke(main.app, ["join", "inv_y", "--switch", "--name", "Eve", "--email", "eve@x.com"])
+    assert refused.exit_code == 1 and "declined" in refused.output
+    assert not (tmp_path / ".loom" / "join-request.json").exists()
 
 
 def test_photos_are_saved_byte_for_byte(tmp_path):

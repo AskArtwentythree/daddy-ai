@@ -135,6 +135,23 @@ button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
 }
 .panel-head h2 { font-size: 22px; }
 
+/* ── Waiting to join ──────────────────────────────────────────────────── */
+
+.waiting { margin-top: 34px; }
+.waiting-list { list-style: none; margin: 0; padding: 0; }
+.waiting-item {
+  display: flex; align-items: baseline; gap: 18px; flex-wrap: wrap;
+  padding: 12px 0; border-bottom: 1px solid var(--rule);
+}
+.waiting-item strong { font: 600 17px/1.25 var(--serif); }
+.waiting-item .who { flex: 1 1 320px; }
+.waiting-item .about { display: block; font-size: 12.5px; color: var(--ink-faint); margin-top: 2px; }
+.waiting-item .choices { display: flex; gap: 10px; }
+.waiting-item button { font-size: 13px; font-weight: 600; padding: 5px 14px; border: 1px solid var(--ink); }
+.waiting-item button.let-in { background: var(--ink); color: var(--paper); }
+.waiting-item button.turn-away { color: var(--stop); border-color: var(--stop); }
+.waiting-item button:disabled { opacity: 0.5; cursor: wait; }
+
 /* ── Family tree ──────────────────────────────────────────────────────── */
 
 .tree { padding: 26px 0 8px; overflow-x: auto; }

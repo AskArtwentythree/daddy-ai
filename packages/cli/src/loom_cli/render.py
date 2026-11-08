@@ -65,3 +65,8 @@ def inbox(items: list[dict]) -> str:
         + (f": {item['note']}" if item["note"] else "")
         for item in items
     )
+
+
+def describe_request(request: dict) -> str:
+    where = f"the '{request['project']}' project" if request.get("project") else "the team"
+    return f"{request['name']} <{request['email']}> on {request['device']} wants to join {where}"

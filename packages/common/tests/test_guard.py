@@ -35,6 +35,9 @@ TOKEN = "ghp_" + "a1B2c3D4e5F6g7H8i9J0k1L2m3N4o5P6q7R8"
         ("printenv", "ask"),
         ("env | sort", "ask"),
         ("env FOO=1 npm test", "allow"),
+        ("loom approve eve@example.com", "ask"),
+        ("loom requests", "allow"),
+        ("loom deny eve@example.com", "allow"),
     ],
 )
 def test_shell_rules(command, verdict):
