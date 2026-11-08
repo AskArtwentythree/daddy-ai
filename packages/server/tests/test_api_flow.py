@@ -156,3 +156,25 @@ def test_team_link_lets_several_people_join(api, monkeypatch):
     assert personal["max_uses"] == 1
     assert api.post("/api/join", json={"code": personal["code"], "device_name": "d"}).json()["user"] == "Pat"
     assert api.post("/api/join", json={"code": personal["code"], "device_name": "d"}).status_code == 403
+
+
+def test_rename(api, monkeypatch):
+    ana = _new_family(api, monkeypatch, "Rename Team", "Ana")
+    api.post("/api/projects", json={"name": "Club"}, headers=auth(ana))
+    link = api.post("/api/invites", headers=auth(ana), json={"project": "club", "max_uses": 1}).json()["code"]
+    body = {"code": link, "device_name": "d", "email": "ben@example.com", "display_name": "Ben"}
+    ben = api.post("/api/join", json=body).json()["token"]
+
+    def rename(token, name):
+        return api.post("/api/me/name", headers=auth(token), json={"display_name": name})
+
+    assert rename(ben, "  ana ").status_code == 400
+    assert rename(ben, "   ").status_code == 400
+    assert rename(ben, "Benjamin  Stone").json() == {"user": "Benjamin Stone", "previous": "Ben"}
+    assert api.get("/api/me", headers=auth(ben)).json()["user"] == "Benjamin Stone"
+    note = {"project": "club", "to": "Benjamin Stone", "filename": "m.txt", "content": "hi", "kind": "message"}
+    assert api.post("/api/send", headers=auth(ana), json=note).json()["recipient"] == "Benjamin Stone"
+    assert api.post("/api/send", headers=auth(ana), json={**note, "to": "Ben"}).status_code == 404
+    renames = [e for e in api.get("/api/audit", headers=auth(ana)).json() if e["action"] == "user.rename"]
+    assert [e["detail"] for e in renames if e["decision"] == "allow"] == [{"old": "Ben", "new": "Benjamin Stone"}]
+    assert sum(e["decision"] != "allow" for e in renames) == 2

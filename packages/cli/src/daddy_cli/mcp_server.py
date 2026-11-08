@@ -24,7 +24,7 @@ from daddy_common.secrets import is_sensitive_path, scan_text
 
 from . import render
 from .client import DaddyClient, DaddyError
-from .config import load_config
+from .config import load_config, save_config
 from .installer import install
 
 SESSION_KEY = uuid4().hex
@@ -279,6 +279,20 @@ async def save_note(title: str, content: str, ctx: Context, project: str | None 
         return f"Saved to {slug} knowledge as {result['path']}; every project member can now find it."
     except DaddyError as error:
         return _failure(error)
+
+
+@mcp.tool()
+async def change_my_name(name: str, ctx: Context) -> str:
+    """Change the user's display name, the name teammates see and send things to."""
+    client = _client(ctx)
+    try:
+        result = await _api(lambda: client.post("/api/me/name", {"display_name": name}))
+    except DaddyError as error:
+        return _failure(error)
+    config = load_config()
+    config.user = result["user"]
+    save_config(config)
+    return f"Done: you are now '{result['user']}' (was '{result['previous']}'). Teammates send to you by this name."
 
 
 def run() -> None:

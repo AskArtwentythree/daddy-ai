@@ -259,6 +259,8 @@ function describe(event) {
       return "revoked a computer";
     case "dashboard.login":
       return "opened the dashboard";
+    case "user.rename":
+      return ok ? `changed their name from <b>${esc(d.old)}</b> to <b>${esc(d.new)}</b>` : `tried to change their name to <b>${esc(d.new)}</b>`;
     default:
       return esc(event.action);
   }

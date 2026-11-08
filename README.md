@@ -77,6 +77,7 @@ There are no commands to learn. Once connected, your agent sees Daddy AI's tools
 | "Send this file to Sri" | Saved to Sri's `~/Daddy/inbox/<you>/` |
 | "Did anyone send me anything?" | Your inbox |
 | "Remember for the team: we freeze code on Wednesdays" | A note every teammate's agent can find right away |
+| "Daddy, change my name to Alex" | Teammates now see you, and send to you, as Alex |
 
 If you ask about something that isn't in the project, Daddy says *"Not in project knowledge."* instead of guessing.
 
@@ -87,6 +88,7 @@ You rarely need these, but they're there:
 | Command | Does |
 | --- | --- |
 | `daddy status` | Who you are, your projects, your inbox, which agents are connected |
+| `daddy rename "New Name"` | Change the name teammates see and send to (it must be unique in the team) |
 | `daddy watch` | Live window for messages, files and skills (the installer opens it for you) |
 | `daddy dashboard` | Opens the team dashboard in your browser |
 | `daddy ask "…"` | Ask from the terminal instead of through an agent |

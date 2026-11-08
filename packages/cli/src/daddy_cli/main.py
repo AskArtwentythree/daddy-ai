@@ -133,6 +133,16 @@ def status() -> None:
 
 
 @app.command()
+def rename(name: str) -> None:
+    """Change the name teammates see and send to."""
+    result = _call(_client().post, "/api/me/name", {"display_name": name})
+    config = load_config()
+    config.user = result["user"]
+    save_config(config)
+    typer.secho(f"You are now '{result['user']}' (was '{result['previous']}').", fg="green")
+
+
+@app.command()
 def logout() -> None:
     """Forget this computer's token."""
     config = load_config()

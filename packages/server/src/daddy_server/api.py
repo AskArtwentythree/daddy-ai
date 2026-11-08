@@ -367,6 +367,27 @@ def me(actor: Actor = Depends(require_actor)) -> dict:
     }
 
 
+class RenameBody(BaseModel):
+    display_name: str = Field(min_length=1, max_length=80)
+
+
+@app.post("/api/me/name")
+def rename(body: RenameBody, actor: Actor = Depends(require_actor)) -> dict:
+    """Change your display name; teammates send to you by name, so it must be unique in the family."""
+    name = " ".join(body.display_name.split())
+    with audited(actor, "user.rename", old=actor.display_name, new=name), connection() as conn:
+        if not name:
+            raise InvalidRequest("The name can't be empty")
+        taken = conn.execute(
+            "SELECT 1 FROM users WHERE workspace_id = %s AND lower(display_name) = lower(%s) AND id <> %s",
+            (actor.workspace_id, name, actor.user_id),
+        ).fetchone()
+        if taken:
+            raise InvalidRequest(f"Someone in this family is already called {name}")
+        conn.execute("UPDATE users SET display_name = %s WHERE id = %s", (name, actor.user_id))
+    return {"user": name, "previous": actor.display_name}
+
+
 # ── Projects and knowledge ────────────────────────────────────────────────────
 
 

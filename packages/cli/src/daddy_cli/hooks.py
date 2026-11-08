@@ -28,6 +28,7 @@ OWN_TOOLS = frozenset(
         "accept_delivery",
         "decline_delivery",
         "save_note",
+        "change_my_name",
     }
 )
 
