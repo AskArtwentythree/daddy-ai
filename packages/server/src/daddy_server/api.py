@@ -330,7 +330,6 @@ def list_projects(actor: Actor = Depends(require_actor)) -> list[dict]:
 def create_project(body: ProjectBody, actor: Actor = Depends(require_actor)) -> dict:
     slug = body.slug or _slugify(body.name)
     with audited(actor, "project.create", slug=slug) as scope, connection() as conn:
-        require_admin(actor)
         if conn.execute(
             "SELECT 1 FROM projects WHERE workspace_id = %s AND slug = %s", (actor.workspace_id, slug)
         ).fetchone():

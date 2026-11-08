@@ -70,6 +70,10 @@ def test_family_flow(api):
     assert salary["answer"] == "Not in project knowledge."
     assert api.post("/api/ask", headers=auth(bob), json={"query": "salary", "project": "private"}).status_code == 403
 
+    assert api.post("/api/projects", json={"name": "Bob's side project"}, headers=auth(bob)).status_code == 200
+    bob_roles = {p["slug"]: p["role"] for p in api.get("/api/projects", headers=auth(bob)).json()}
+    assert bob_roles == {"app": "member", "bob-s-side-project": "owner"}
+
     sent = api.post("/api/send", headers=auth(alice), json={
         "project": "app", "to": "Bob", "filename": "deploy/SKILL.md", "content": "# Deploy skill", "kind": "skill",
     }).json()
